@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: sale-order-flask
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT wsgi:application
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: SESSION_COOKIE_SECURE
+        value: "1"
+      # Set these in Render dashboard (do not commit real values):
+      # - SECRET_KEY
+      # - USER1 / USER2 ... (username:bcrypt_hash)
+      # - DATABASE_URL (Supabase Postgres connection string)
+      # Optional:
+      # - DB_SSLMODE=require
+      # - LOG_FILE=/var/log/app.log

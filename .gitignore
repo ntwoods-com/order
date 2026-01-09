@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.log
+uploads/
+reports/
+order_counter.db
+*.db
+.vscode/
