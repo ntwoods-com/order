@@ -155,6 +155,18 @@ def init_schema(*, default_sqlite_db_file: str) -> None:
                 )
                 """
             )
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS active_sessions (
+                    username TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    issued_at TEXT,
+                    ip TEXT,
+                    user_agent TEXT
+                )
+                """
+            )
         else:
             # SQLite: keep INTEGER PRIMARY KEY.
             conn.execute(
@@ -168,6 +180,10 @@ def init_schema(*, default_sqlite_db_file: str) -> None:
             )
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS counters (month_year TEXT PRIMARY KEY,counter INTEGER)"
+            )
+
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS active_sessions (username TEXT PRIMARY KEY,session_id TEXT NOT NULL,issued_at TEXT,ip TEXT,user_agent TEXT)"
             )
 
         conn.commit()

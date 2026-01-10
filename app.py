@@ -91,6 +91,9 @@ bcrypt = Bcrypt(app)
 @app.before_request
 def validate_session():
     # Skip validation for static files and login/logout routes
+    if request.endpoint is None:
+        return
+
     if request.endpoint in ['static', 'login', 'logout', 'favicon']:
         return
     
@@ -101,18 +104,31 @@ def validate_session():
     
     # Check if user session exists and is valid
     if 'user' in session:
-        username = session['user']
-        if username not in ACTIVE_SESSIONS:
-            app.logger.warning(f"Invalid session detected for user: {username}")
+        username = session.get('user')
+        session_id = session.get('session_id')
+        if not username or not session_id:
             session.clear()
             flash("Your session is invalid. Please login again.", "error")
             return redirect(url_for('login'))
-        
+
         if username not in USERS:
             app.logger.error(f"User {username} not found in USERS")
             session.clear()
-            ACTIVE_SESSIONS.pop(username, None)
             flash("User account not found. Please contact administrator.", "error")
+            return redirect(url_for('login'))
+
+        try:
+            expected = get_active_session_id(username)
+        except Exception as e:
+            app.logger.error(f"Session validation DB error for user {username}: {e}")
+            session.clear()
+            flash("Session check failed. Please login again.", "error")
+            return redirect(url_for('login'))
+
+        if not expected or expected != session_id:
+            app.logger.info(f"Session rotated for user {username}; forcing re-login")
+            session.clear()
+            flash("You have been logged out because you logged in on another device.", "error")
             return redirect(url_for('login'))
 
 # Load users from .env (format: USER1=username:hashed_password)
@@ -599,6 +615,61 @@ def init_db():
 # Ensure DB schema exists when imported under WSGI (PythonAnywhere).
 init_db()
 
+
+def get_client_ip() -> str:
+    forwarded = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+    return forwarded or (request.remote_addr or '')
+
+
+def get_active_session_id(username: str):
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT session_id FROM active_sessions WHERE username = ?",
+            (username,),
+        ).fetchone()
+        return row['session_id'] if row else None
+    finally:
+        conn.close()
+
+
+def upsert_active_session(username: str, session_id: str) -> None:
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO active_sessions (username, session_id, issued_at, ip, user_agent)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+                session_id = excluded.session_id,
+                issued_at = excluded.issued_at,
+                ip = excluded.ip,
+                user_agent = excluded.user_agent
+            """,
+            (
+                username,
+                session_id,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                get_client_ip(),
+                (request.headers.get('User-Agent') or '')[:512],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_active_session_if_match(username: str, session_id: str) -> None:
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "DELETE FROM active_sessions WHERE username = ? AND session_id = ?",
+            (username, session_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 def get_latest_order_id_global():
     try:
         conn = get_db_connection()
@@ -636,18 +707,23 @@ def login():
         if not uname or not pwd:
             flash("Please enter both username and password.", 'error')
         elif uname in USERS and bcrypt.check_password_hash(USERS[uname], pwd):
-            if uname in ACTIVE_SESSIONS:
-                flash("This account is already logged in on another system.", "error")
-                return redirect(url_for("login"))
-            
             # Clear any existing session data
             session.clear()
-            
+
+            # Rotate session id: new login invalidates old devices automatically.
+            new_session_id = uuid.uuid4().hex
+            try:
+                upsert_active_session(uname, new_session_id)
+            except Exception as e:
+                app.logger.error(f"Failed to set active session for user {uname}: {e}")
+                flash("Login failed due to a server error. Please try again.", "error")
+                return redirect(url_for("login"))
+
             # Set new session
             session['user'] = uname
+            session['session_id'] = new_session_id
             session.permanent = True  # Make session permanent with timeout
-            ACTIVE_SESSIONS[uname] = True
-            
+
             app.logger.info(f"User {uname} logged in successfully")
             return redirect(url_for("home"))
         else:
@@ -694,8 +770,13 @@ def login():
 @app.route("/logout")
 def logout():
     uname = session.get("user")
-    if uname:
-        ACTIVE_SESSIONS.pop(uname, None)
+    session_id = session.get('session_id')
+    if uname and session_id:
+        try:
+            # Only delete if this browser is the currently active session.
+            delete_active_session_if_match(uname, session_id)
+        except Exception as e:
+            app.logger.error(f"Logout DB error for user {uname}: {e}")
         app.logger.info(f"User {uname} logged out")
     
     session.clear()
@@ -710,18 +791,30 @@ def login_required(f):
         if "user" not in session:
             flash("Please login to access this page.", "error")
             return redirect(url_for("login"))
-        
-        # Check if user is in active sessions
+
         username = session.get("user")
-        if username not in ACTIVE_SESSIONS:
-            session.clear()  # Clear invalid session
+        session_id = session.get('session_id')
+        if not username or not session_id:
+            session.clear()
             flash("Your session has expired. Please login again.", "error")
+            return redirect(url_for("login"))
+
+        try:
+            expected = get_active_session_id(username)
+        except Exception as e:
+            app.logger.error(f"Session check DB error for user {username}: {e}")
+            session.clear()
+            flash("Your session has expired. Please login again.", "error")
+            return redirect(url_for("login"))
+
+        if not expected or expected != session_id:
+            session.clear()
+            flash("You have been logged out because you logged in on another device.", "error")
             return redirect(url_for("login"))
         
         # Verify user still exists in USERS
         if username not in USERS:
             session.clear()
-            ACTIVE_SESSIONS.pop(username, None)
             flash("User account not found. Please contact administrator.", "error")
             return redirect(url_for("login"))
             
