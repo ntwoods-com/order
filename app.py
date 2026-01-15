@@ -2031,7 +2031,7 @@ def home():
                 <a href="/dashboard" class="btn btn-secondary">📈 Dashboard</a>
                 <a href="/orders" class="btn btn-secondary">📋 My Orders</a>
                 <a href="/search" class="btn btn-secondary">🔍 Search</a>
-                <a href="/additional-order" class="btn btn-secondary">📋 Additional Order</a>
+                <a href="/additional-order" class="btn btn-secondary">📋 Report</a>
                 <a href="/last-id" class="btn btn-secondary">🔢 Last Order ID</a>
                 <a href="/issue-order-id" class="btn btn-secondary">🎯 Give Order ID</a>
                 {'<a href="/admin" class="btn btn-secondary">⚙️ Admin</a>' if is_admin else ''}
@@ -2309,7 +2309,7 @@ def additional_order():
     body = f"""
     <div class="header">
         <div class="header-controls">{THEME_SELECTOR_HTML}</div>
-        <h1>📋 Additional Order</h1>
+        <h1>📋 Report</h1>
         <p>Generate order with existing Order ID</p>
         <div class="nav-links">
             <a href="/" class="btn btn-secondary">🏠 Home</a>
@@ -2436,7 +2436,7 @@ def additional_order_form():
     body = f"""
     <div class="header">
         <div class="header-controls">{THEME_SELECTOR_HTML}</div>
-        <h1>📝 Additional Order Details</h1>
+        <h1>📝 Report Details</h1>
         <p>Enter existing Order ID and order details</p>
     </div>
     <div class="main">
@@ -2491,7 +2491,7 @@ def additional_order_form():
                     ← Back
                 </a>
                 <button class="btn btn-primary" type="submit" id="generateButton">
-                    📋 Generate Additional Order
+                    📋 Generate Report
                 </button>
             </div>
         </form>
