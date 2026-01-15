@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, send_file, request, flash, redirect, url_for, session, current_app, get_flashed_messages
+from flask import Flask, render_template_string, send_file, request, flash, redirect, url_for, session, current_app, get_flashed_messages, jsonify
 from werkzeug.utils import secure_filename
 from generate_sale_order import prepare_data, write_report
 import os
@@ -17,6 +17,10 @@ from flask_bcrypt import Bcrypt
 import re # Import re for filename sanitization
 from werkzeug.middleware.proxy_fix import ProxyFix
 from db_utils import connect as db_connect, init_schema
+
+# Import Blueprints
+from api import api_bp
+from admin import admin_bp
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -151,6 +155,13 @@ class Config:
     DATABASE_FILE = os.getenv('DATABASE_FILE', os.path.join(BASE_DIR, 'order_counter.db'))
 
 app.config.from_object(Config)
+
+# Store USERS dict in app config for admin panel
+app.config['USERS_DICT'] = USERS
+
+# Register Blueprints
+app.register_blueprint(api_bp)
+app.register_blueprint(admin_bp)
 
 # Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -490,6 +501,835 @@ THEME_CSS_AND_JS = """
         transition: background 0.3s;
     }
     ::-webkit-scrollbar-thumb:hover { background: var(--primary-color); }
+    
+    /* ========== ADVANCED UI ENHANCEMENTS ========== */
+    
+    /* Glassmorphism Cards */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 16px;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+    }
+    
+    /* Floating Animation */
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+    }
+    
+    .float-animation { animation: float 3s ease-in-out infinite; }
+    
+    /* Pulse Animation */
+    @keyframes pulse-soft {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+        50% { box-shadow: 0 0 0 15px rgba(99, 102, 241, 0); }
+    }
+    
+    .pulse-animation { animation: pulse-soft 2s infinite; }
+    
+    /* Gradient Text */
+    .gradient-text {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    /* Shimmer Effect for Loading */
+    @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+    }
+    
+    .shimmer {
+        background: linear-gradient(90deg, var(--bg-card) 0%, var(--gradient-accent) 50%, var(--bg-card) 100%);
+        background-size: 1000px 100%;
+        animation: shimmer 2s infinite linear;
+    }
+    
+    /* Toast Notifications */
+    .toast-container {
+        position: fixed;
+        top: 1.5rem;
+        right: 1.5rem;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .toast {
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        animation: slideInRight 0.3s ease-out;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        max-width: 350px;
+    }
+    
+    .toast-success { background: var(--success-bg); color: var(--success-text); }
+    .toast-error { background: var(--error-bg); color: var(--error-text); }
+    .toast-info { background: var(--gradient-accent); color: var(--primary-color); }
+    
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+    
+    /* Loading Spinner */
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid var(--border-color);
+        border-top: 4px solid var(--primary-color);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    /* Skeleton Loading */
+    .skeleton {
+        background: linear-gradient(90deg, var(--bg-main) 25%, var(--border-color) 50%, var(--bg-main) 75%);
+        background-size: 200% 100%;
+        animation: skeleton-loading 1.5s infinite;
+        border-radius: 8px;
+    }
+    
+    @keyframes skeleton-loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    
+    /* Hover Lift Effect */
+    .hover-lift {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .hover-lift:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 40px -12px var(--shadow-color);
+    }
+    
+    /* Progress Bar */
+    .progress-bar {
+        height: 8px;
+        background: var(--border-color);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+    
+    /* Badge Styles */
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        gap: 0.25rem;
+    }
+    
+    .badge-primary { background: var(--primary-color); color: white; }
+    .badge-success { background: var(--success-bg); color: var(--success-text); }
+    .badge-warning { background: #fef3c7; color: #d97706; }
+    .badge-danger { background: var(--error-bg); color: var(--error-text); }
+    
+    /* Tooltip */
+    .tooltip {
+        position: relative;
+    }
+    
+    .tooltip::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 0.5rem 0.75rem;
+        background: var(--text-dark);
+        color: var(--bg-card);
+        font-size: 0.75rem;
+        border-radius: 6px;
+        white-space: nowrap;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.2s ease;
+        z-index: 1000;
+    }
+    
+    .tooltip:hover::after {
+        opacity: 1;
+        visibility: visible;
+        transform: translateX(-50%) translateY(-5px);
+    }
+    
+    /* Animated Gradient Border */
+    .gradient-border {
+        position: relative;
+        background: var(--bg-card);
+        border-radius: 16px;
+    }
+    
+    .gradient-border::before {
+        content: '';
+        position: absolute;
+        inset: -2px;
+        background: linear-gradient(45deg, var(--primary-color), var(--secondary-color), #ec4899, var(--primary-color));
+        background-size: 400% 400%;
+        border-radius: 18px;
+        z-index: -1;
+        animation: gradient-rotate 5s linear infinite;
+    }
+    
+    @keyframes gradient-rotate {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    
+    /* Stats Counter Animation */
+    .counter {
+        font-variant-numeric: tabular-nums;
+    }
+    
+    /* Keyboard Shortcut Badge */
+    .kbd {
+        display: inline-block;
+        padding: 0.15rem 0.4rem;
+        font-size: 0.7rem;
+        font-family: monospace;
+        background: var(--bg-main);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        box-shadow: 0 2px 0 var(--border-color);
+    }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: var(--text-muted);
+    }
+    
+    .empty-state-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    /* Page Transition */
+    .page-enter {
+        animation: pageEnter 0.4s ease-out;
+    }
+    
+    @keyframes pageEnter {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* ========== SUPER ADVANCED UI/UX ========== */
+    
+    /* Animated Background Particles */
+    .particles-bg {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: -1;
+        overflow: hidden;
+    }
+    
+    .particle {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        background: var(--primary-color);
+        border-radius: 50%;
+        opacity: 0.3;
+        animation: particleFloat 15s infinite ease-in-out;
+    }
+    
+    @keyframes particleFloat {
+        0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+        10% { opacity: 0.3; }
+        90% { opacity: 0.3; }
+        100% { transform: translateY(-10vh) rotate(720deg); opacity: 0; }
+    }
+    
+    /* 3D Card Tilt Effect */
+    .tilt-card {
+        transform-style: preserve-3d;
+        perspective: 1000px;
+        transition: transform 0.5s ease;
+    }
+    
+    .tilt-card:hover {
+        transform: rotateX(5deg) rotateY(5deg) scale(1.02);
+    }
+    
+    /* Morphing Button */
+    .btn-morph {
+        position: relative;
+        overflow: hidden;
+        transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+    
+    .btn-morph:hover {
+        border-radius: 50px;
+        padding-left: 2.5rem;
+        padding-right: 2.5rem;
+    }
+    
+    .btn-morph::after {
+        content: '';
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: -100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+        transition: left 0.5s;
+    }
+    
+    .btn-morph:hover::after {
+        left: 100%;
+    }
+    
+    /* Neon Glow Effect */
+    .neon-glow {
+        text-shadow: 0 0 10px var(--primary-color),
+                     0 0 20px var(--primary-color),
+                     0 0 40px var(--primary-color);
+    }
+    
+    .neon-box {
+        box-shadow: 0 0 10px var(--primary-color),
+                    0 0 20px var(--primary-color),
+                    inset 0 0 10px rgba(255,255,255,0.1);
+    }
+    
+    /* Command Palette Styles */
+    .command-palette-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(8px);
+        z-index: 99999;
+        display: none;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 15vh;
+        animation: fadeIn 0.2s ease;
+    }
+    
+    .command-palette-overlay.active {
+        display: flex;
+    }
+    
+    .command-palette {
+        background: var(--bg-card);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 600px;
+        box-shadow: 0 25px 80px rgba(0,0,0,0.35);
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+        animation: slideDown 0.25s ease;
+    }
+    
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    
+    .command-input-wrapper {
+        display: flex;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+        gap: 0.75rem;
+    }
+    
+    .command-input-wrapper input {
+        border: none;
+        background: transparent;
+        font-size: 1.1rem;
+        flex: 1;
+        padding: 0.5rem;
+    }
+    
+    .command-input-wrapper input:focus {
+        outline: none;
+        box-shadow: none;
+        transform: none;
+    }
+    
+    .command-results {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .command-item {
+        display: flex;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        gap: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .command-item:hover, .command-item.active {
+        background: var(--gradient-accent);
+    }
+    
+    .command-item-icon {
+        font-size: 1.25rem;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-main);
+        border-radius: 10px;
+    }
+    
+    .command-item-content {
+        flex: 1;
+    }
+    
+    .command-item-title {
+        font-weight: 600;
+        color: var(--text-dark);
+    }
+    
+    .command-item-desc {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+    
+    .command-shortcut {
+        display: flex;
+        gap: 0.25rem;
+    }
+    
+    /* Animated Stats Counter */
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    
+    /* Ripple Click Effect */
+    .ripple {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .ripple-effect {
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.4);
+        transform: scale(0);
+        animation: rippleAnim 0.6s linear;
+        pointer-events: none;
+    }
+    
+    @keyframes rippleAnim {
+        to { transform: scale(4); opacity: 0; }
+    }
+    
+    /* Smooth Scroll Progress Bar */
+    .scroll-progress {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        z-index: 99999;
+        transition: width 0.1s;
+    }
+    
+    /* Animated Underline Links */
+    .fancy-link {
+        position: relative;
+        text-decoration: none;
+        color: var(--primary-color);
+    }
+    
+    .fancy-link::after {
+        content: '';
+        position: absolute;
+        bottom: -2px;
+        left: 0;
+        width: 0;
+        height: 2px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        transition: width 0.3s ease;
+    }
+    
+    .fancy-link:hover::after {
+        width: 100%;
+    }
+    
+    /* Spotlight Effect on Cards */
+    .spotlight-card {
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .spotlight-card::before {
+        content: '';
+        position: absolute;
+        width: 200px;
+        height: 200px;
+        background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+        transform: translate(-50%, -50%);
+    }
+    
+    .spotlight-card:hover::before {
+        opacity: 1;
+    }
+    
+    /* Staggered Animation for Lists */
+    .stagger-item {
+        opacity: 0;
+        transform: translateY(20px);
+        animation: staggerIn 0.5s ease forwards;
+    }
+    
+    @keyframes staggerIn {
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Confetti Animation */
+    .confetti {
+        position: fixed;
+        width: 10px;
+        height: 10px;
+        z-index: 99999;
+        pointer-events: none;
+    }
+    
+    @keyframes confettiFall {
+        0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+    
+    /* Blur Loading Overlay */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.8);
+        backdrop-filter: blur(5px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99998;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+    }
+    
+    .loading-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    
+    /* Fancy Input with Floating Label */
+    .floating-label-group {
+        position: relative;
+        margin-bottom: 1.5rem;
+    }
+    
+    .floating-label-group input {
+        padding-top: 1.5rem;
+    }
+    
+    .floating-label {
+        position: absolute;
+        top: 50%;
+        left: 1.25rem;
+        transform: translateY(-50%);
+        transition: all 0.2s ease;
+        pointer-events: none;
+        color: var(--text-muted);
+        font-size: 1rem;
+    }
+    
+    .floating-label-group input:focus + .floating-label,
+    .floating-label-group input:not(:placeholder-shown) + .floating-label {
+        top: 0.75rem;
+        font-size: 0.75rem;
+        color: var(--primary-color);
+        transform: translateY(0);
+    }
+    
+    /* Animated Checkbox */
+    .fancy-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        cursor: pointer;
+    }
+    
+    .fancy-checkbox input {
+        display: none;
+    }
+    
+    .fancy-checkbox-box {
+        width: 24px;
+        height: 24px;
+        border: 2px solid var(--border-color);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+    
+    .fancy-checkbox input:checked + .fancy-checkbox-box {
+        background: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+    
+    .fancy-checkbox-box::after {
+        content: '✓';
+        color: white;
+        font-size: 14px;
+        opacity: 0;
+        transform: scale(0);
+        transition: all 0.2s ease;
+    }
+    
+    .fancy-checkbox input:checked + .fancy-checkbox-box::after {
+        opacity: 1;
+        transform: scale(1);
+    }
+    
+    /* Typing Animation */
+    .typing-text {
+        overflow: hidden;
+        border-right: 3px solid var(--primary-color);
+        white-space: nowrap;
+        animation: typing 3s steps(30, end), blink 0.75s step-end infinite;
+    }
+    
+    @keyframes typing {
+        from { width: 0; }
+        to { width: 100%; }
+    }
+    
+    @keyframes blink {
+        50% { border-color: transparent; }
+    }
+    
+    /* Draggable Cards */
+    .draggable {
+        cursor: grab;
+        user-select: none;
+    }
+    
+    .draggable:active {
+        cursor: grabbing;
+    }
+    
+    .draggable.dragging {
+        opacity: 0.5;
+        transform: rotate(3deg);
+    }
+    
+    /* Quick Action Floating Button */
+    .fab {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        cursor: pointer;
+        box-shadow: 0 6px 20px var(--shadow-color);
+        transition: all 0.3s ease;
+        z-index: 1000;
+        border: none;
+    }
+    
+    .fab:hover {
+        transform: scale(1.1) rotate(90deg);
+        box-shadow: 0 10px 30px var(--shadow-color);
+    }
+    
+    .fab-menu {
+        position: fixed;
+        bottom: 7rem;
+        right: 2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(20px);
+        transition: all 0.3s ease;
+        z-index: 999;
+    }
+    
+    .fab-menu.active {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+    }
+    
+    .fab-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: var(--bg-card);
+        padding: 0.75rem 1rem;
+        border-radius: 30px;
+        box-shadow: 0 4px 15px var(--shadow-color);
+        text-decoration: none;
+        color: var(--text-dark);
+        font-weight: 500;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+    
+    .fab-menu-item:hover {
+        transform: translateX(-5px);
+        background: var(--gradient-accent);
+    }
+    
+    /* Mobile Bottom Navigation */
+    @media (max-width: 768px) {
+        .mobile-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-around;
+            padding: 0.75rem 0;
+            z-index: 1000;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .mobile-nav a {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.7rem;
+            transition: color 0.2s;
+        }
+        
+        .mobile-nav a.active {
+            color: var(--primary-color);
+        }
+        
+        .mobile-nav a span {
+            font-size: 1.25rem;
+        }
+        
+        body {
+            padding-bottom: 5rem;
+        }
+        
+        .fab {
+            bottom: 5rem;
+        }
+    }
+    
+    /* Smooth Number Counter */
+    .count-up {
+        transition: all 0.5s ease;
+    }
+    
+    /* Card Flip Animation */
+    .flip-card {
+        perspective: 1000px;
+        height: 200px;
+    }
+    
+    .flip-card-inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transition: transform 0.8s;
+        transform-style: preserve-3d;
+    }
+    
+    .flip-card:hover .flip-card-inner {
+        transform: rotateY(180deg);
+    }
+    
+    .flip-card-front, .flip-card-back {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+    }
+    
+    .flip-card-front {
+        background: var(--gradient-accent);
+    }
+    
+    .flip-card-back {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        transform: rotateY(180deg);
+    }
 </style>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -513,6 +1353,9 @@ THEME_CSS_AND_JS = """
                 localStorage.setItem('theme', selectedTheme);
                 applyTheme(selectedTheme);
                 
+                // Show toast notification
+                showToast('Theme changed to ' + selectedTheme, 'success');
+                
                 // Add ripple effect
                 const ripple = document.createElement('div');
                 ripple.style.cssText = `
@@ -525,7 +1368,299 @@ THEME_CSS_AND_JS = """
                 setTimeout(() => ripple.remove(), 600);
             });
         }
+        
+        // Add page enter animation
+        document.body.classList.add('page-enter');
+        
+        // Initialize particles background
+        createParticles();
+        
+        // Initialize scroll progress bar
+        createScrollProgress();
+        
+        // Initialize FAB menu
+        initFAB();
+        
+        // Initialize command palette
+        initCommandPalette();
+        
+        // Add ripple effect to buttons
+        addRippleEffect();
+        
+        // Animate counters
+        animateCounters();
+        
+        // Stagger animation for lists
+        animateStaggerItems();
     });
+    
+    // Create floating particles
+    function createParticles() {
+        const container = document.createElement('div');
+        container.className = 'particles-bg';
+        document.body.appendChild(container);
+        
+        for (let i = 0; i < 15; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.animationDelay = Math.random() * 15 + 's';
+            particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+            container.appendChild(particle);
+        }
+    }
+    
+    // Scroll progress bar
+    function createScrollProgress() {
+        const progress = document.createElement('div');
+        progress.className = 'scroll-progress';
+        document.body.appendChild(progress);
+        
+        window.addEventListener('scroll', () => {
+            const scrollTop = document.documentElement.scrollTop;
+            const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const scrollPercent = (scrollTop / scrollHeight) * 100;
+            progress.style.width = scrollPercent + '%';
+        });
+    }
+    
+    // Floating Action Button
+    function initFAB() {
+        const fabHTML = `
+            <button class="fab" id="fabBtn">➕</button>
+            <div class="fab-menu" id="fabMenu">
+                <a href="/" class="fab-menu-item"><span>🏠</span> Home</a>
+                <a href="/dashboard" class="fab-menu-item"><span>📈</span> Dashboard</a>
+                <a href="/search" class="fab-menu-item"><span>🔍</span> Search</a>
+                <a href="/orders" class="fab-menu-item"><span>📋</span> Orders</a>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', fabHTML);
+        
+        const fab = document.getElementById('fabBtn');
+        const menu = document.getElementById('fabMenu');
+        
+        fab.addEventListener('click', () => {
+            menu.classList.toggle('active');
+            fab.textContent = menu.classList.contains('active') ? '✕' : '➕';
+        });
+    }
+    
+    // Command Palette (Ctrl+K)
+    function initCommandPalette() {
+        const paletteHTML = `
+            <div class="command-palette-overlay" id="commandPalette">
+                <div class="command-palette">
+                    <div class="command-input-wrapper">
+                        <span>🔍</span>
+                        <input type="text" id="commandInput" placeholder="Type a command or search..." autocomplete="off">
+                        <span class="kbd">ESC</span>
+                    </div>
+                    <div class="command-results" id="commandResults">
+                        <div class="command-item" data-href="/">
+                            <div class="command-item-icon">🏠</div>
+                            <div class="command-item-content">
+                                <div class="command-item-title">Go to Home</div>
+                                <div class="command-item-desc">Upload files and create orders</div>
+                            </div>
+                            <div class="command-shortcut"><span class="kbd">Ctrl</span><span class="kbd">H</span></div>
+                        </div>
+                        <div class="command-item" data-href="/dashboard">
+                            <div class="command-item-icon">📈</div>
+                            <div class="command-item-content">
+                                <div class="command-item-title">Go to Dashboard</div>
+                                <div class="command-item-desc">View analytics and insights</div>
+                            </div>
+                            <div class="command-shortcut"><span class="kbd">Ctrl</span><span class="kbd">D</span></div>
+                        </div>
+                        <div class="command-item" data-href="/search">
+                            <div class="command-item-icon">🔍</div>
+                            <div class="command-item-content">
+                                <div class="command-item-title">Search Orders</div>
+                                <div class="command-item-desc">Find orders with advanced filters</div>
+                            </div>
+                            <div class="command-shortcut"><span class="kbd">Ctrl</span><span class="kbd">K</span></div>
+                        </div>
+                        <div class="command-item" data-href="/orders">
+                            <div class="command-item-icon">📋</div>
+                            <div class="command-item-content">
+                                <div class="command-item-title">My Orders</div>
+                                <div class="command-item-desc">View your generated orders</div>
+                            </div>
+                        </div>
+                        <div class="command-item" data-href="/last-id">
+                            <div class="command-item-icon">🔢</div>
+                            <div class="command-item-content">
+                                <div class="command-item-title">Last Order ID</div>
+                                <div class="command-item-desc">Check latest order ID status</div>
+                            </div>
+                        </div>
+                        <div class="command-item" data-href="/issue-order-id">
+                            <div class="command-item-icon">🎯</div>
+                            <div class="command-item-content">
+                                <div class="command-item-title">Issue Order ID</div>
+                                <div class="command-item-desc">Assign IDs to team members</div>
+                            </div>
+                        </div>
+                        <div class="command-item" data-href="/logout">
+                            <div class="command-item-icon">🚪</div>
+                            <div class="command-item-content">
+                                <div class="command-item-title">Logout</div>
+                                <div class="command-item-desc">Sign out of your account</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', paletteHTML);
+        
+        const overlay = document.getElementById('commandPalette');
+        const input = document.getElementById('commandInput');
+        const results = document.getElementById('commandResults');
+        const items = results.querySelectorAll('.command-item');
+        let activeIndex = 0;
+        
+        // Filter commands
+        input.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            items.forEach(item => {
+                const title = item.querySelector('.command-item-title').textContent.toLowerCase();
+                const desc = item.querySelector('.command-item-desc').textContent.toLowerCase();
+                item.style.display = (title.includes(query) || desc.includes(query)) ? 'flex' : 'none';
+            });
+        });
+        
+        // Navigate with keyboard
+        input.addEventListener('keydown', (e) => {
+            const visibleItems = [...items].filter(i => i.style.display !== 'none');
+            
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeIndex = Math.min(activeIndex + 1, visibleItems.length - 1);
+                updateActiveItem(visibleItems, activeIndex);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeIndex = Math.max(activeIndex - 1, 0);
+                updateActiveItem(visibleItems, activeIndex);
+            } else if (e.key === 'Enter' && visibleItems[activeIndex]) {
+                window.location.href = visibleItems[activeIndex].dataset.href;
+            }
+        });
+        
+        function updateActiveItem(visibleItems, index) {
+            items.forEach(i => i.classList.remove('active'));
+            if (visibleItems[index]) {
+                visibleItems[index].classList.add('active');
+                visibleItems[index].scrollIntoView({ block: 'nearest' });
+            }
+        }
+        
+        // Click on items
+        items.forEach(item => {
+            item.addEventListener('click', () => {
+                window.location.href = item.dataset.href;
+            });
+        });
+        
+        // Close on overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.classList.remove('active');
+            }
+        });
+    }
+    
+    // Add ripple effect to buttons
+    function addRippleEffect() {
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.classList.add('ripple');
+            btn.addEventListener('click', function(e) {
+                const rect = this.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const ripple = document.createElement('span');
+                ripple.className = 'ripple-effect';
+                ripple.style.left = x + 'px';
+                ripple.style.top = y + 'px';
+                
+                this.appendChild(ripple);
+                setTimeout(() => ripple.remove(), 600);
+            });
+        });
+    }
+    
+    // Animate counters
+    function animateCounters() {
+        document.querySelectorAll('[data-count]').forEach(el => {
+            const target = parseInt(el.dataset.count);
+            const duration = 2000;
+            const step = target / (duration / 16);
+            let current = 0;
+            
+            const timer = setInterval(() => {
+                current += step;
+                if (current >= target) {
+                    el.textContent = target;
+                    clearInterval(timer);
+                } else {
+                    el.textContent = Math.floor(current);
+                }
+            }, 16);
+        });
+    }
+    
+    // Stagger animation
+    function animateStaggerItems() {
+        document.querySelectorAll('.stagger-item').forEach((item, index) => {
+            item.style.animationDelay = (index * 0.1) + 's';
+        });
+    }
+
+    // Toast notification system
+    function showToast(message, type = 'info') {
+        let container = document.querySelector('.toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'toast-container';
+            document.body.appendChild(container);
+        }
+        
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        
+        const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+        toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${message}</span>`;
+        
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.animation = 'slideOutRight 0.3s ease-out forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+    
+    // Confetti celebration
+    function showConfetti() {
+        const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#22c55e', '#f97316'];
+        for (let i = 0; i < 50; i++) {
+            const confetti = document.createElement('div');
+            confetti.className = 'confetti';
+            confetti.style.cssText = `
+                left: ${Math.random() * 100}vw;
+                background: ${colors[Math.floor(Math.random() * colors.length)]};
+                animation: confettiFall ${2 + Math.random() * 2}s linear forwards;
+                animation-delay: ${Math.random() * 0.5}s;
+            `;
+            document.body.appendChild(confetti);
+            setTimeout(() => confetti.remove(), 4000);
+        }
+    }
+    
+    // Make functions globally available
+    window.showToast = showToast;
+    window.showConfetti = showConfetti;
 
     // Add ripple animation
     const style = document.createElement('style');
@@ -535,6 +1670,34 @@ THEME_CSS_AND_JS = """
         }
     `;
     document.head.appendChild(style);
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd + K for command palette
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            const palette = document.getElementById('commandPalette');
+            palette.classList.toggle('active');
+            if (palette.classList.contains('active')) {
+                document.getElementById('commandInput').focus();
+            }
+        }
+        // Escape to close command palette
+        if (e.key === 'Escape') {
+            document.getElementById('commandPalette').classList.remove('active');
+            document.getElementById('fabMenu').classList.remove('active');
+        }
+        // Ctrl/Cmd + D for dashboard
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+            window.location.href = '/dashboard';
+        }
+        // Ctrl/Cmd + H for home
+        if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+            e.preventDefault();
+            window.location.href = '/';
+        }
+    });
 </script>
 """
 
@@ -851,6 +2014,10 @@ def home():
             flash("There was an error processing your file.", "error")
             return redirect(url_for('home'))
 
+    # Check if user is admin
+    admin_users = os.getenv('ADMIN_USERS', 'admin').split(',')
+    is_admin = session['user'] in admin_users
+
     body = f"""
     <div class="header">
         <div class="header-controls">{THEME_SELECTOR_HTML}</div>
@@ -861,9 +2028,12 @@ def home():
             <span>Welcome back, <strong>{session['user']}</strong>! 👋</span>
             <div class="nav-links">
                 <a href="/" class="btn btn-secondary">🏠 Home</a>
+                <a href="/dashboard" class="btn btn-secondary">📈 Dashboard</a>
                 <a href="/orders" class="btn btn-secondary">📋 My Orders</a>
+                <a href="/search" class="btn btn-secondary">🔍 Search</a>
                 <a href="/last-id" class="btn btn-secondary">🔢 Last Order ID</a>
                 <a href="/issue-order-id" class="btn btn-secondary">🎯 Give Order ID</a>
+                {'<a href="/admin" class="btn btn-secondary">⚙️ Admin</a>' if is_admin else ''}
                 <a href="/logout" class="btn btn-secondary">🚪 Logout</a>
             </div>
         </div>
@@ -1533,6 +2703,382 @@ def issue_order_id_success():
     """
     
     return create_page_template("Order ID Issued Successfully", body, is_card=True)
+
+
+# ==================== Advanced Dashboard ====================
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    try:
+        conn = get_db_connection()
+        
+        # Stats
+        total_orders = conn.execute("SELECT COUNT(*) as c FROM sale_orders").fetchone()['c']
+        user_orders = conn.execute(
+            "SELECT COUNT(*) as c FROM sale_orders WHERE username = ?", 
+            (session['user'],)
+        ).fetchone()['c']
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        today_orders = conn.execute(
+            "SELECT COUNT(*) as c FROM sale_orders WHERE generated_at LIKE ?",
+            (f"{today}%",)
+        ).fetchone()['c']
+        
+        current_month = datetime.now().strftime('%Y-%m')
+        month_orders = conn.execute(
+            "SELECT COUNT(*) as c FROM sale_orders WHERE generated_at LIKE ?",
+            (f"{current_month}%",)
+        ).fetchone()['c']
+        
+        # Top dealers
+        top_dealers = conn.execute("""
+            SELECT dealer_name, city, COUNT(*) as cnt 
+            FROM sale_orders GROUP BY dealer_name, city 
+            ORDER BY cnt DESC LIMIT 5
+        """).fetchall()
+        
+        # Top cities
+        top_cities = conn.execute("""
+            SELECT city, COUNT(*) as cnt FROM sale_orders 
+            GROUP BY city ORDER BY cnt DESC LIMIT 5
+        """).fetchall()
+        
+        # Monthly trend (last 6 months)
+        monthly_data = conn.execute("""
+            SELECT substr(generated_at, 1, 7) as month, COUNT(*) as cnt 
+            FROM sale_orders 
+            WHERE generated_at >= date('now', '-6 months')
+            GROUP BY month ORDER BY month ASC
+        """).fetchall()
+        
+        # Recent orders
+        recent_orders = conn.execute("""
+            SELECT order_id, dealer_name, city, generated_at 
+            FROM sale_orders ORDER BY generated_at DESC LIMIT 10
+        """).fetchall()
+        
+        conn.close()
+    except Exception as e:
+        current_app.logger.error(f"Dashboard error: {e}")
+        total_orders = user_orders = today_orders = month_orders = 0
+        top_dealers = top_cities = monthly_data = recent_orders = []
+    
+    # Chart data
+    chart_labels = [m['month'] for m in monthly_data] if monthly_data else []
+    chart_values = [m['cnt'] for m in monthly_data] if monthly_data else []
+    
+    city_labels = [c['city'] for c in top_cities] if top_cities else []
+    city_values = [c['cnt'] for c in top_cities] if top_cities else []
+    
+    # Build HTML for top dealers
+    dealers_html = ""
+    for d in top_dealers:
+        dealers_html += f"""
+        <div style="display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
+            <div>
+                <strong>{d['dealer_name']}</strong>
+                <span style="color: var(--text-muted); font-size: 0.85rem;"> • {d['city']}</span>
+            </div>
+            <span style="background: var(--primary-color); color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600;">
+                {d['cnt']} orders
+            </span>
+        </div>
+        """
+    
+    # Recent orders HTML
+    recent_html = ""
+    for o in recent_orders:
+        recent_html += f"""
+        <div style="display: flex; justify-content: space-between; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color);">
+            <div>
+                <strong style="color: var(--primary-color);">{o['order_id']}</strong>
+                <span style="color: var(--text-muted); font-size: 0.85rem;"> - {o['dealer_name']}</span>
+            </div>
+            <span style="color: var(--text-muted); font-size: 0.85rem;">{o['generated_at'][:10]}</span>
+        </div>
+        """
+    
+    # Check admin
+    admin_users = os.getenv('ADMIN_USERS', 'admin').split(',')
+    is_admin = session['user'] in admin_users
+
+    body = f"""
+    <div class="header">
+        <div class="header-controls">{THEME_SELECTOR_HTML}</div>
+        <h1>📈 Analytics Dashboard</h1>
+        <p class="tagline">Real-time insights into your order data</p>
+        <div class="nav-links">
+            <a href="/" class="btn btn-secondary">🏠 Home</a>
+            <a href="/dashboard" class="btn btn-secondary" style="background: rgba(255,255,255,0.2);">📈 Dashboard</a>
+            <a href="/orders" class="btn btn-secondary">📋 My Orders</a>
+            <a href="/search" class="btn btn-secondary">🔍 Search</a>
+            {'<a href="/admin" class="btn btn-secondary">⚙️ Admin</a>' if is_admin else ''}
+            <a href="/logout" class="btn btn-secondary">🚪 Logout</a>
+        </div>
+    </div>
+    <div class="main">
+        <!-- Stats Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+            <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 1.5rem; border-radius: 16px; text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700;">{total_orders}</div>
+                <div style="opacity: 0.9;">Total Orders</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #22c55e, #16a34a); color: white; padding: 1.5rem; border-radius: 16px; text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700;">{user_orders}</div>
+                <div style="opacity: 0.9;">My Orders</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #f97316, #ea580c); color: white; padding: 1.5rem; border-radius: 16px; text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700;">{today_orders}</div>
+                <div style="opacity: 0.9;">Today's Orders</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; padding: 1.5rem; border-radius: 16px; text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700;">{month_orders}</div>
+                <div style="opacity: 0.9;">This Month</div>
+            </div>
+        </div>
+        
+        <!-- Charts Row -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem;">
+                <h3 style="color: var(--primary-color); margin-bottom: 1rem;">📊 Monthly Trend</h3>
+                <canvas id="monthlyChart" height="200"></canvas>
+            </div>
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem;">
+                <h3 style="color: var(--primary-color); margin-bottom: 1rem;">🌍 Top Cities</h3>
+                <canvas id="cityChart" height="200"></canvas>
+            </div>
+        </div>
+        
+        <!-- Bottom Row -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem;">
+                <h3 style="color: var(--primary-color); margin-bottom: 1rem;">🏆 Top Dealers</h3>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    {dealers_html if dealers_html else '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">No data yet</p>'}
+                </div>
+            </div>
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem;">
+                <h3 style="color: var(--primary-color); margin-bottom: 1rem;">📋 Recent Orders</h3>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    {recent_html if recent_html else '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">No orders yet</p>'}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        // Monthly trend chart
+        const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+        new Chart(monthlyCtx, {{{{
+            type: 'line',
+            data: {{{{
+                labels: {chart_labels},
+                datasets: [{{{{
+                    label: 'Orders',
+                    data: {chart_values},
+                    borderColor: '#6366f1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#6366f1',
+                    pointRadius: 5
+                }}}}]
+            }}}},
+            options: {{{{
+                responsive: true,
+                plugins: {{{{ legend: {{{{ display: false }}}} }}}},
+                scales: {{{{
+                    y: {{{{ beginAtZero: true, ticks: {{{{ stepSize: 1 }}}} }}}}
+                }}}}
+            }}}}
+        }}}});
+        
+        // City pie chart
+        const cityCtx = document.getElementById('cityChart').getContext('2d');
+        new Chart(cityCtx, {{{{
+            type: 'doughnut',
+            data: {{{{
+                labels: {city_labels},
+                datasets: [{{{{
+                    data: {city_values},
+                    backgroundColor: ['#6366f1', '#22c55e', '#f97316', '#0ea5e9', '#ec4899']
+                }}}}]
+            }}}},
+            options: {{{{
+                responsive: true,
+                plugins: {{{{
+                    legend: {{{{ position: 'bottom' }}}}
+                }}}}
+            }}}}
+        }}}});
+    </script>
+    """
+    return create_page_template("Dashboard", body, is_container=True)
+
+
+# ==================== Advanced Search ====================
+@app.route('/search')
+@login_required
+def search_page():
+    query = request.args.get('q', '').strip()
+    dealer = request.args.get('dealer', '').strip()
+    city = request.args.get('city', '').strip()
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    
+    results = []
+    searched = False
+    
+    if query or dealer or city or date_from or date_to:
+        searched = True
+        try:
+            conn = get_db_connection()
+            
+            conditions = []
+            params = []
+            
+            if query:
+                conditions.append("(dealer_name LIKE ? OR city LIKE ? OR order_id LIKE ?)")
+                params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
+            if dealer:
+                conditions.append("dealer_name LIKE ?")
+                params.append(f"%{dealer}%")
+            if city:
+                conditions.append("city LIKE ?")
+                params.append(f"%{city}%")
+            if date_from:
+                conditions.append("generated_at >= ?")
+                params.append(date_from)
+            if date_to:
+                conditions.append("generated_at <= ?")
+                params.append(f"{date_to} 23:59:59")
+            
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            
+            results = conn.execute(f"""
+                SELECT * FROM sale_orders WHERE {where_clause}
+                ORDER BY generated_at DESC LIMIT 100
+            """, tuple(params)).fetchall()
+            
+            conn.close()
+        except Exception as e:
+            current_app.logger.error(f"Search error: {e}")
+    
+    # Build results HTML
+    results_html = ""
+    if searched:
+        if results:
+            for r in results:
+                results_html += f"""
+                <div style="background: var(--gradient-accent); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border-color); transition: all 0.2s ease;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <h4 style="color: var(--primary-color); margin-bottom: 0.5rem;">📋 {r['dealer_name']}</h4>
+                            <p style="margin: 0.25rem 0;"><strong>🌍 City:</strong> {r['city']}</p>
+                            <p style="margin: 0.25rem 0;"><strong>🔢 Order ID:</strong> {r['order_id']}</p>
+                            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0.25rem 0;">📅 {r['generated_at']} • By: {r['username']}</p>
+                        </div>
+                        <a href="/download/{r['report_name']}" style="background: var(--primary-color); color: white; padding: 0.5rem 1rem; border-radius: 8px; text-decoration: none; font-weight: 500;">
+                            📥 Download
+                        </a>
+                    </div>
+                </div>
+                """
+        else:
+            results_html = '<div style="text-align: center; padding: 3rem; color: var(--text-muted);"><div style="font-size: 3rem; margin-bottom: 1rem;">🔍</div><h3>No results found</h3><p>Try different search terms</p></div>'
+    
+    # Check admin
+    admin_users = os.getenv('ADMIN_USERS', 'admin').split(',')
+    is_admin = session['user'] in admin_users
+
+    body = f"""
+    <div class="header">
+        <div class="header-controls">{THEME_SELECTOR_HTML}</div>
+        <h1>🔍 Advanced Search</h1>
+        <p class="tagline">Find orders quickly with powerful filters</p>
+        <div class="nav-links">
+            <a href="/" class="btn btn-secondary">🏠 Home</a>
+            <a href="/dashboard" class="btn btn-secondary">📈 Dashboard</a>
+            <a href="/orders" class="btn btn-secondary">📋 My Orders</a>
+            <a href="/search" class="btn btn-secondary" style="background: rgba(255,255,255,0.2);">🔍 Search</a>
+            {'<a href="/admin" class="btn btn-secondary">⚙️ Admin</a>' if is_admin else ''}
+            <a href="/logout" class="btn btn-secondary">🚪 Logout</a>
+        </div>
+    </div>
+    <div class="main">
+        <!-- Search Form -->
+        <div style="background: var(--gradient-accent); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem; border: 1px solid var(--border-color);">
+            <form method="GET" id="searchForm">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label>🔍 Quick Search</label>
+                        <input type="text" name="q" value="{query}" placeholder="Search anything..." style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>🏢 Dealer Name</label>
+                        <input type="text" name="dealer" value="{dealer}" placeholder="Dealer name..." style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>🌍 City</label>
+                        <input type="text" name="city" value="{city}" placeholder="City name..." style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>📅 From Date</label>
+                        <input type="date" name="date_from" value="{date_from}" style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>📅 To Date</label>
+                        <input type="date" name="date_to" value="{date_to}" style="width: 100%;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: center;">
+                    <button type="submit" class="btn btn-primary">🔍 Search</button>
+                    <a href="/search" class="btn btn-secondary">↻ Reset</a>
+                    <button type="button" class="btn btn-secondary" onclick="exportResults()">📥 Export Results</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Results -->
+        {f'<div style="margin-bottom: 1rem; color: var(--text-muted);">Found <strong>{len(results)}</strong> results</div>' if searched else ''}
+        <div id="searchResults">
+            {results_html if searched else '<div style="text-align: center; padding: 3rem; color: var(--text-muted);"><div style="font-size: 3rem; margin-bottom: 1rem;">🔎</div><h3>Start Searching</h3><p>Use the filters above to find orders</p></div>'}
+        </div>
+    </div>
+    
+    <script>
+        function exportResults() {{{{
+            const params = new URLSearchParams(window.location.search);
+            params.set('export', 'true');
+            fetch('/api/v1/orders/export?' + params.toString())
+                .then(r => r.json())
+                .then(data => {{{{
+                    if (data.success) {{{{
+                        // Create CSV
+                        let csv = 'Order ID,Dealer Name,City,Username,Generated At\\n';
+                        data.data.forEach(o => {{{{
+                            csv += `"${{o.order_id}}","${{o.dealer_name}}","${{o.city}}","${{o.username}}","${{o.generated_at}}"\\n`;
+                        }}}});
+                        
+                        const blob = new Blob([csv], {{{{ type: 'text/csv' }}}});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'orders_export_' + new Date().toISOString().slice(0,10) + '.csv';
+                        a.click();
+                    }}}} else {{{{
+                        alert('Export failed: ' + data.error);
+                    }}}}
+                }}}})
+                .catch(err => alert('Export failed: ' + err));
+        }}}}
+    </script>
+    """
+    return create_page_template("Search", body, is_container=True)
+
 
 @app.route('/favicon.ico')
 def favicon():
