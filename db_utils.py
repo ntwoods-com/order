@@ -118,7 +118,8 @@ def init_schema(*, default_sqlite_db_file: str) -> None:
                     city TEXT,
                     order_id TEXT,
                     report_name TEXT,
-                    generated_at TEXT
+                    generated_at TEXT,
+                    order_type TEXT DEFAULT 'new'
                 )
                 """
             )
@@ -170,7 +171,7 @@ def init_schema(*, default_sqlite_db_file: str) -> None:
         else:
             # SQLite: keep INTEGER PRIMARY KEY.
             conn.execute(
-                "CREATE TABLE IF NOT EXISTS sale_orders (id INTEGER PRIMARY KEY,username TEXT,dealer_name TEXT,city TEXT,order_id TEXT,report_name TEXT,generated_at TEXT)"
+                "CREATE TABLE IF NOT EXISTS sale_orders (id INTEGER PRIMARY KEY,username TEXT,dealer_name TEXT,city TEXT,order_id TEXT,report_name TEXT,generated_at TEXT,order_type TEXT DEFAULT 'new')"
             )
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS order_id_views (id INTEGER PRIMARY KEY,username TEXT,order_id TEXT,viewed_at TEXT,ip TEXT,user_agent TEXT)"

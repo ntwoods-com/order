@@ -97,8 +97,10 @@ def generate_unique_order_id():
         print(f"[DB] Counter error: {e}")
         return "ERROR-ID"
 
-def log_order_to_database(username, dealer_name, city, order_id, report_name):
-    """Audit log for generated orders."""
+def log_order_to_database(username, dealer_name, city, order_id, report_name, order_type="new"):
+    """Audit log for generated orders.
+    order_type: 'new' for new orders, 'additional' for additional orders with existing order ID
+    """
     try:
         db_file = _get_db_file()
         init_schema(default_sqlite_db_file=db_file)
@@ -106,8 +108,8 @@ def log_order_to_database(username, dealer_name, city, order_id, report_name):
 
         generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
-            "INSERT INTO sale_orders (username, dealer_name, city, order_id, report_name, generated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (username, dealer_name, city, order_id, report_name, generated_at),
+            "INSERT INTO sale_orders (username, dealer_name, city, order_id, report_name, generated_at, order_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (username, dealer_name, city, order_id, report_name, generated_at, order_type),
         )
         conn.commit()
         conn.close()
@@ -298,7 +300,8 @@ def write_report(
     df,
     output_file,
     weight_map, hdmr_map, mdf_map, ply_map, pvc_map, wpc_map,
-    username, dealer_name, city, order_date, freight_condition
+    username, dealer_name, city, order_date, freight_condition,
+    custom_order_id=None, is_additional_order=False
 ):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -352,13 +355,21 @@ def write_report(
     ws.row_dimensions[current_row].height = 20
     current_row += 1
 
-    unique_id = generate_unique_order_id()
+    # Use custom order ID if provided, else generate new
+    if custom_order_id and custom_order_id.strip():
+        unique_id = custom_order_id.strip()
+    else:
+        unique_id = generate_unique_order_id()
+    
+    # Add order type label for additional orders
+    order_type_label = "ADDITIONAL ORDER ID" if is_additional_order else "ORDER ID"
+    
     info_rows = [
         ("ORDER DATE", order_date if order_date else "N/A"),
         ("DEALER NAME", dealer_name if dealer_name else "N/A"),
         ("CITY", city if city else "N/A"),
         ("FREIGHT", freight_condition if freight_condition else "N/A"),
-        ("ORDER ID", unique_id),
+        (order_type_label, unique_id),
     ]
     for label, value in info_rows:
         ws.cell(row=current_row, column=1, value=label)
@@ -529,6 +540,7 @@ def write_report(
     # Save + Audit
     wb.save(output_file)
     try:
-        log_order_to_database(username, dealer_name, city, unique_id, os.path.basename(output_file))
+        order_type = "additional" if is_additional_order else "new"
+        log_order_to_database(username, dealer_name, city, unique_id, os.path.basename(output_file), order_type)
     except Exception:
         pass

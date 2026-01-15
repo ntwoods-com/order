@@ -2031,6 +2031,7 @@ def home():
                 <a href="/dashboard" class="btn btn-secondary">📈 Dashboard</a>
                 <a href="/orders" class="btn btn-secondary">📋 My Orders</a>
                 <a href="/search" class="btn btn-secondary">🔍 Search</a>
+                <a href="/additional-order" class="btn btn-secondary">📋 Additional Order</a>
                 <a href="/last-id" class="btn btn-secondary">🔢 Last Order ID</a>
                 <a href="/issue-order-id" class="btn btn-secondary">🎯 Give Order ID</a>
                 {'<a href="/admin" class="btn btn-secondary">⚙️ Admin</a>' if is_admin else ''}
@@ -2279,6 +2280,249 @@ def order_form():
     </script>
     """
     return create_page_template("Order Details", body, is_container=True)
+
+# ===== ADDITIONAL ORDER ROUTES (Uses existing Order ID) =====
+@app.route('/additional-order', methods=['GET', 'POST'])
+@login_required
+def additional_order():
+    """Upload file for additional order that uses existing order ID"""
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash("No file selected.", "error")
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            flash("No file selected.", "error")
+            return redirect(request.url)
+        if not allowed_file(file.filename):
+            flash("Invalid file type. Please upload an Excel file.", "error")
+            return redirect(request.url)
+
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(file.filename))
+        file.save(temp_path)
+        session['additional_temp_file_path'] = temp_path
+        session['additional_uploaded_filename'] = file.filename
+        session['additional_uploaded_filesize'] = f"{os.path.getsize(temp_path) / 1024:.2f} KB"
+        session['additional_upload_time'] = datetime.now().strftime("%d-%m-%Y %H:%M")
+        return redirect(url_for('additional_order_form'))
+    
+    body = f"""
+    <div class="header">
+        <div class="header-controls">{THEME_SELECTOR_HTML}</div>
+        <h1>📋 Additional Order</h1>
+        <p>Generate order with existing Order ID</p>
+        <div class="nav-links">
+            <a href="/" class="btn btn-secondary">🏠 Home</a>
+            <a href="/orders" class="btn btn-secondary">📋 My Orders</a>
+        </div>
+    </div>
+    <div class="main">
+        <div class="info-card" style="background: linear-gradient(135deg, var(--warning-bg) 0%, var(--accent-bg) 100%); padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem; border-left: 4px solid var(--warning-text);">
+            <h3 style="margin-bottom: 0.5rem; color: var(--warning-text);">ℹ️ Additional Order</h3>
+            <p style="margin: 0; color: var(--text-color);">This feature allows you to generate a new report using an <strong>existing Order ID</strong> instead of creating a new one. Useful for:</p>
+            <ul style="margin: 0.5rem 0 0 1.5rem; color: var(--text-color);">
+                <li>Adding more items to an existing order</li>
+                <li>Reprinting orders with modifications</li>
+                <li>Creating supplementary orders</li>
+            </ul>
+        </div>
+        
+        <form method="POST" enctype="multipart/form-data" id="additionalUploadForm">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-content">
+                    <div style="font-size: 4rem; margin-bottom: 1rem; animation: bounce 2s infinite;">📊</div>
+                    <h3 style="margin-bottom: 0.5rem;">Drop your Excel file here</h3>
+                    <p style="color: var(--text-muted); margin-bottom: 1.5rem;">or click to browse</p>
+                    <input type="file" name="file" id="fileInput" accept=".xlsx,.xls" required style="display: none;">
+                    <button type="button" class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                        📁 Choose File
+                    </button>
+                </div>
+            </div>
+            <div id="fileInfo" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--success-bg); border-radius: 8px; border: 1px solid var(--success-text);">
+                <span id="fileName" style="font-weight: 600; color: var(--success-text);"></span>
+            </div>
+            <div style="text-align: center; margin-top: 2rem;">
+                <button type="submit" class="btn btn-primary" id="continueBtn" disabled>
+                    ➡️ Continue to Order Details
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const continueBtn = document.getElementById('continueBtn');
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {{{{
+            dropZone.addEventListener(event, e => {{{{ e.preventDefault(); e.stopPropagation(); }}}});
+        }}}});
+        
+        ['dragenter', 'dragover'].forEach(event => {{{{
+            dropZone.addEventListener(event, () => dropZone.classList.add('drag-over'));
+        }}}});
+        
+        ['dragleave', 'drop'].forEach(event => {{{{
+            dropZone.addEventListener(event, () => dropZone.classList.remove('drag-over'));
+        }}}});
+        
+        dropZone.addEventListener('drop', e => {{{{
+            fileInput.files = e.dataTransfer.files;
+            updateFileInfo();
+        }}}});
+        
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        fileInput.addEventListener('change', updateFileInfo);
+        
+        function updateFileInfo() {{{{
+            if (fileInput.files.length > 0) {{{{
+                fileName.textContent = '📄 ' + fileInput.files[0].name;
+                fileInfo.style.display = 'block';
+                continueBtn.disabled = false;
+            }}}}
+        }}}}
+    </script>
+    """
+    return create_page_template("Additional Order", body, is_container=True)
+
+@app.route('/additional-form', methods=['GET', 'POST'])
+@login_required
+def additional_order_form():
+    """Form for additional order with order ID input"""
+    if 'additional_temp_file_path' not in session or not os.path.exists(session['additional_temp_file_path']):
+        flash("Please upload an Excel file first.", "error")
+        return redirect(url_for('additional_order'))
+
+    if request.method == 'POST':
+        try:
+            dealer_name = request.form.get('dealer_name', '').strip()
+            city = request.form.get('city', '').strip()
+            order_date_raw = request.form.get('order_date', '')
+            order_date = datetime.strptime(order_date_raw, '%Y-%m-%d').strftime('%d-%m-%Y') if order_date_raw else ""
+            freight_condition = request.form.get('freight_condition', '').strip()
+            existing_order_id = request.form.get('existing_order_id', '').strip()
+            
+            if not existing_order_id:
+                flash("Please enter an existing Order ID.", "error")
+                return redirect(request.url)
+
+            df, _, weight_map, hdmr_map, mdf_map, ply_map, pvc_map, wpc_map = prepare_data(session['additional_temp_file_path'])
+            
+            safe_dealer_name = re.sub(r'[^a-zA-Z0-9_.-]+', '_', dealer_name)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_name = f"{safe_dealer_name}_{timestamp}_ADDITIONAL_ORDER.xlsx"
+            output_path = os.path.join(app.config['REPORT_FOLDER'], report_name)
+
+            write_report(df, output_path, weight_map, hdmr_map, mdf_map, ply_map, pvc_map, wpc_map, 
+                         session['user'], dealer_name, city, order_date, freight_condition,
+                         custom_order_id=existing_order_id, is_additional_order=True)
+
+            os.remove(session['additional_temp_file_path'])
+            session.pop('additional_temp_file_path', None)
+            session.pop('additional_uploaded_filename', None)
+            session.pop('additional_uploaded_filesize', None)
+            session.pop('additional_upload_time', None)
+            
+            flash(f"✅ Additional order generated with Order ID: {existing_order_id}", "success")
+            return redirect(url_for('download_report', report_name=report_name))
+        except Exception as e:
+            current_app.logger.error(f"Additional order error: {e}")
+            flash("Failed to generate the additional order. An unexpected error occurred.", "error")
+    
+    body = f"""
+    <div class="header">
+        <div class="header-controls">{THEME_SELECTOR_HTML}</div>
+        <h1>📝 Additional Order Details</h1>
+        <p>Enter existing Order ID and order details</p>
+    </div>
+    <div class="main">
+        <div class="file-info" style="margin-bottom: 2.5rem;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div style="font-size: 2rem;">📊</div>
+                <div>
+                    <div style="font-weight: 700; color: var(--primary-color);">
+                        {session.get('additional_uploaded_filename','N/A')}
+                    </div>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">
+                        Size: {session.get('additional_uploaded_filesize','N/A')} • Uploaded: {session.get('additional_upload_time','N/A')}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <form method="POST" id="additionalOrderForm">
+            <div class="form-group" style="margin-bottom: 2rem; padding: 1.5rem; background: linear-gradient(135deg, var(--warning-bg) 0%, var(--accent-bg) 100%); border-radius: 12px; border: 2px solid var(--warning-text);">
+                <label for="existing_order_id" style="font-size: 1.1rem; font-weight: 700; color: var(--warning-text);">🔢 Existing Order ID *</label>
+                <input id="existing_order_id" name="existing_order_id" required 
+                    placeholder="e.g., NTWS/2025/0523/01" 
+                    style="font-size: 1.1rem; font-weight: 600; text-transform: uppercase;"
+                    pattern="[A-Za-z0-9/.-]+"
+                    title="Enter the existing order ID (letters, numbers, /, ., - allowed)">
+                <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
+                    💡 Enter the Order ID from the original order you want to add to
+                </small>
+            </div>
+            
+            <div class="grid-form">
+                <div class="form-group">
+                    <label for="dealer_name">🏢 Dealer Name *</label>
+                    <input id="dealer_name" name="dealer_name" required placeholder="Enter dealer name">
+                </div>
+                <div class="form-group">
+                    <label for="city">🌍 City *</label>
+                    <input id="city" name="city" required placeholder="Enter city name">
+                </div>
+                <div class="form-group">
+                    <label for="order_date">📅 Order Date *</label>
+                    <input type="date" id="order_date" name="order_date" required>
+                </div>
+                <div class="form-group">
+                    <label for="freight_condition">🚚 Freight Condition</label>
+                    <input id="freight_condition" name="freight_condition" placeholder="e.g., FOB, CIF, Ex-Works">
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 2.5rem; flex-wrap: wrap;">
+                <a class="btn btn-secondary" href="/additional-order">
+                    ← Back
+                </a>
+                <button class="btn btn-primary" type="submit" id="generateButton">
+                    📋 Generate Additional Order
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <script>
+        document.getElementById('order_date').valueAsDate = new Date();
+        
+        document.getElementById('additionalOrderForm').addEventListener('submit', function(e) {{{{
+            const button = document.getElementById('generateButton');
+            const orderId = document.getElementById('existing_order_id').value.trim();
+            const dealerName = document.getElementById('dealer_name').value.trim();
+            const city = document.getElementById('city').value.trim();
+            
+            if (!orderId || !dealerName || !city) {{{{
+                e.preventDefault();
+                alert('⚠️ Please fill in all required fields including the existing Order ID');
+                return;
+            }}}}
+            
+            button.disabled = true;
+            button.innerHTML = '⏳ Generating Additional Order...';
+        }}}});
+        
+        // Auto uppercase for order ID
+        document.getElementById('existing_order_id').addEventListener('input', function() {{{{
+            this.value = this.value.toUpperCase();
+        }}}});
+    </script>
+    """
+    return create_page_template("Additional Order Details", body, is_container=True)
 
 @app.route('/download/<path:report_name>')
 @login_required
