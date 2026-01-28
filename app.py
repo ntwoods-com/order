@@ -1952,33 +1952,12 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         # Check if user is in session
         if "user" not in session:
+            # If validate_session didn't catch it (e.g. session missing entirely), redirect here.
+            # (validate_session handles invalid sessions, but if no session at all, it might just return)
+            # Actually validate_session skips if endpoint is login, but for others it checks.
+            # But if session is empty, validate_session returns (line 110 'if user in session').
+            # So we MUST redirect here if user not in session.
             flash("Please login to access this page.", "error")
-            return redirect(url_for("login"))
-
-        username = session.get("user")
-        session_id = session.get('session_id')
-        if not username or not session_id:
-            session.clear()
-            flash("Your session has expired. Please login again.", "error")
-            return redirect(url_for("login"))
-
-        try:
-            expected = get_active_session_id(username)
-        except Exception as e:
-            app.logger.error(f"Session check DB error for user {username}: {e}")
-            session.clear()
-            flash("Your session has expired. Please login again.", "error")
-            return redirect(url_for("login"))
-
-        if not expected or expected != session_id:
-            session.clear()
-            flash("You have been logged out because you logged in on another device.", "error")
-            return redirect(url_for("login"))
-        
-        # Verify user still exists in USERS
-        if username not in USERS:
-            session.clear()
-            flash("User account not found. Please contact administrator.", "error")
             return redirect(url_for("login"))
             
         return f(*args, **kwargs)

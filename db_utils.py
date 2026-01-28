@@ -22,6 +22,12 @@ def get_database_url(*, default_sqlite_db_file: str) -> str:
         # Heroku-style URLs sometimes come as postgres://
         if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://") :]
+        
+        # fix: Supabase Transaction Pooler (6543) often times out on some networks (like Render).
+        # For a standard Flask app (persistent server), Session mode (5432) is preferred and more stable.
+        if "supabase.com" in url and ":6543" in url:
+            url = url.replace(":6543", ":5432")
+
         return url
 
     return _sqlite_url(default_sqlite_db_file)
@@ -41,10 +47,15 @@ def get_engine(database_url: str):
         sslmode = os.getenv("DB_SSLMODE", "require").strip().lower()
         # psycopg2 expects sslmode in connect_args.
         connect_args["sslmode"] = sslmode
+        # Add connection timeout to fail fast if network is bad
+        connect_args["connect_timeout"] = 10
 
     return create_engine(
         database_url,
         pool_pre_ping=True,
+        pool_size=10,        # Default is 5. Increase for production.
+        max_overflow=20,     # Allow more temporary connections.
+        pool_recycle=1800,   # Recycle connections every 30 mins to avoid stale connections.
         future=True,
         connect_args=connect_args,
     )
