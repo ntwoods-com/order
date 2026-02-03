@@ -55,6 +55,8 @@ def upload_file(file_data: bytes, remote_path: str, content_type: str = "applica
             client = _get_supabase_client()
             bucket = _get_bucket_name()
             
+            logger.info(f"Uploading to Supabase bucket '{bucket}' at path '{remote_path}'")
+            
             # Upload to Supabase Storage
             response = client.storage.from_(bucket).upload(
                 path=remote_path,
@@ -62,11 +64,11 @@ def upload_file(file_data: bytes, remote_path: str, content_type: str = "applica
                 file_options={"content-type": content_type, "upsert": "true"}
             )
             
-            logger.info(f"Uploaded file to Supabase Storage: {bucket}/{remote_path}")
+            logger.info(f"Successfully uploaded file to Supabase Storage: {bucket}/{remote_path}")
             return remote_path
         except Exception as e:
-            logger.error(f"Failed to upload to Supabase: {e}")
-            raise
+            logger.error(f"Failed to upload to Supabase bucket '{bucket}' at '{remote_path}': {e}")
+            raise Exception(f"Supabase upload failed: {str(e)}")
     else:
         # Fallback to local filesystem
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -99,15 +101,17 @@ def download_file(remote_path: str) -> Tuple[bytes, str]:
             client = _get_supabase_client()
             bucket = _get_bucket_name()
             
+            logger.info(f"Downloading from Supabase bucket '{bucket}' at path '{remote_path}'")
+            
             # Download from Supabase Storage
             file_data = client.storage.from_(bucket).download(remote_path)
             filename = os.path.basename(remote_path)
             
-            logger.info(f"Downloaded file from Supabase Storage: {bucket}/{remote_path}")
+            logger.info(f"Successfully downloaded file from Supabase Storage: {bucket}/{remote_path} ({len(file_data)} bytes)")
             return (file_data, filename)
         except Exception as e:
-            logger.error(f"Failed to download from Supabase: {e}")
-            raise FileNotFoundError(f"File not found: {remote_path}")
+            logger.error(f"Failed to download from Supabase bucket '{bucket}' at '{remote_path}': {e}")
+            raise FileNotFoundError(f"File not found in Supabase bucket '{bucket}': {remote_path} - {str(e)}")
     else:
         # Fallback to local filesystem
         if not os.path.exists(remote_path):
@@ -136,12 +140,14 @@ def delete_file(remote_path: str) -> bool:
             client = _get_supabase_client()
             bucket = _get_bucket_name()
             
+            logger.info(f"Deleting from Supabase bucket '{bucket}' at path '{remote_path}'")
+            
             # Delete from Supabase Storage
             client.storage.from_(bucket).remove([remote_path])
-            logger.info(f"Deleted file from Supabase Storage: {bucket}/{remote_path}")
+            logger.info(f"Successfully deleted file from Supabase Storage: {bucket}/{remote_path}")
             return True
         except Exception as e:
-            logger.warning(f"Failed to delete from Supabase: {e}")
+            logger.warning(f"Failed to delete from Supabase bucket '{bucket}' at '{remote_path}': {e}")
             return False
     else:
         # Fallback to local filesystem

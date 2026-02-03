@@ -1,6 +1,6 @@
 import { clearToken, getToken } from "./storage.js";
 
-const RAW_BASE = import.meta.env.VITE_API_BASE_URL || "https://order-lkzm.onrender.com";
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || "https://order-9l66.onrender.com";
 export const API_BASE_URL = String(RAW_BASE).replace(/\/$/, "");
 
 function withAuthHeaders(headers = {}) {
