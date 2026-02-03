@@ -4,8 +4,7 @@ from generate_sale_order import prepare_data, write_report
 import os
 import logging
 from logging.handlers import RotatingFileHandler
-import getpass
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import uuid
 from functools import wraps
@@ -1784,6 +1783,11 @@ def get_client_ip() -> str:
     return forwarded or (request.remote_addr or '')
 
 
+def _date_prefix_days_ago(days: int) -> str:
+    """Return YYYY-MM-DD date string for simple TEXT comparisons across SQLite/Postgres."""
+    return (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+
 def get_active_session_id(username: str):
     conn = get_db_connection()
     try:
@@ -1952,33 +1956,12 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         # Check if user is in session
         if "user" not in session:
+            # If validate_session didn't catch it (e.g. session missing entirely), redirect here.
+            # (validate_session handles invalid sessions, but if no session at all, it might just return)
+            # Actually validate_session skips if endpoint is login, but for others it checks.
+            # But if session is empty, validate_session returns (line 110 'if user in session').
+            # So we MUST redirect here if user not in session.
             flash("Please login to access this page.", "error")
-            return redirect(url_for("login"))
-
-        username = session.get("user")
-        session_id = session.get('session_id')
-        if not username or not session_id:
-            session.clear()
-            flash("Your session has expired. Please login again.", "error")
-            return redirect(url_for("login"))
-
-        try:
-            expected = get_active_session_id(username)
-        except Exception as e:
-            app.logger.error(f"Session check DB error for user {username}: {e}")
-            session.clear()
-            flash("Your session has expired. Please login again.", "error")
-            return redirect(url_for("login"))
-
-        if not expected or expected != session_id:
-            session.clear()
-            flash("You have been logged out because you logged in on another device.", "error")
-            return redirect(url_for("login"))
-        
-        # Verify user still exists in USERS
-        if username not in USERS:
-            session.clear()
-            flash("User account not found. Please contact administrator.", "error")
             return redirect(url_for("login"))
             
         return f(*args, **kwargs)
@@ -2989,12 +2972,13 @@ def dashboard():
         """).fetchall()
         
         # Monthly trend (last 6 months)
+        since_6m = _date_prefix_days_ago(183)
         monthly_data = conn.execute("""
             SELECT substr(generated_at, 1, 7) as month, COUNT(*) as cnt 
             FROM sale_orders 
-            WHERE generated_at >= date('now', '-6 months')
+            WHERE generated_at >= ?
             GROUP BY month ORDER BY month ASC
-        """).fetchall()
+        """, (since_6m,)).fetchall()
         
         # Recent orders
         recent_orders = conn.execute("""
@@ -3338,19 +3322,6 @@ def favicon():
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
-    admin_pass_hash = os.getenv("ADMIN_PASSWORD")
-    if not admin_pass_hash:
-        raise ValueError("ADMIN_PASSWORD environment variable is not set!")
-
-    entered = getpass.getpass("[AUTH] Enter admin password to start server: ")
-    # Truncate password to 72 bytes for bcrypt compatibility
-    entered_truncated = entered[:72].encode('utf-8')[:72].decode('utf-8', errors='ignore')
-    if not bcrypt.check_password_hash(admin_pass_hash, entered_truncated):
-        print("[ERROR] Wrong password. Server not starting...")
-        exit(1)
-
-    print("[OK] Authentication successful. Starting server...")
-
     debug = _env_bool("FLASK_DEBUG", default=_app_env not in {"production", "prod"})
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "5000"))

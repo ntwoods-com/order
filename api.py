@@ -3,7 +3,7 @@
 # ================================
 from flask import Blueprint, request, jsonify, session
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta
 import jwt
 import os
 from db_utils import connect as db_connect, init_schema
@@ -18,6 +18,11 @@ JWT_SECRET = os.getenv('JWT_SECRET', os.getenv('SECRET_KEY', 'default-secret'))
 
 def get_db_connection():
     return db_connect(default_sqlite_db_file=DATABASE_FILE)
+
+
+def _date_prefix_days_ago(days: int) -> str:
+    """Return YYYY-MM-DD date string for simple TEXT comparisons across SQLite/Postgres."""
+    return (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
 # ==================== JWT Authentication ====================
@@ -121,15 +126,16 @@ def get_dashboard_stats(current_user):
         """).fetchall()
         
         # Orders by month (last 12 months)
+        since_12m = _date_prefix_days_ago(365)
         monthly_orders = conn.execute("""
             SELECT 
                 substr(generated_at, 1, 7) as month,
                 COUNT(*) as count
             FROM sale_orders 
-            WHERE generated_at >= date('now', '-12 months')
+            WHERE generated_at >= ?
             GROUP BY month 
             ORDER BY month ASC
-        """).fetchall()
+        """, (since_12m,)).fetchall()
         
         # Orders by user
         orders_by_user = conn.execute("""
@@ -183,27 +189,29 @@ def get_chart_data(current_user):
         chart_type = request.args.get('type', 'monthly')
         
         if chart_type == 'monthly':
+            since_12m = _date_prefix_days_ago(365)
             # Orders per month
             data = conn.execute("""
                 SELECT 
                     substr(generated_at, 1, 7) as label,
                     COUNT(*) as value
                 FROM sale_orders 
-                WHERE generated_at >= date('now', '-12 months')
+                WHERE generated_at >= ?
                 GROUP BY label 
                 ORDER BY label ASC
-            """).fetchall()
+            """, (since_12m,)).fetchall()
         elif chart_type == 'daily':
+            since_30d = _date_prefix_days_ago(30)
             # Orders per day (last 30 days)
             data = conn.execute("""
                 SELECT 
                     substr(generated_at, 1, 10) as label,
                     COUNT(*) as value
                 FROM sale_orders 
-                WHERE generated_at >= date('now', '-30 days')
+                WHERE generated_at >= ?
                 GROUP BY label 
                 ORDER BY label ASC
-            """).fetchall()
+            """, (since_30d,)).fetchall()
         elif chart_type == 'city':
             # Orders by city
             data = conn.execute("""
