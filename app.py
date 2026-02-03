@@ -27,25 +27,37 @@ def _configure_logging() -> None:
     logger.setLevel(logging.INFO)
 
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    log_file = os.getenv("LOG_FILE", os.path.join(BASE_DIR, "app.log"))
-    max_bytes = int(os.getenv("LOG_MAX_BYTES", "5000000"))
-    backup_count = int(os.getenv("LOG_BACKUP_COUNT", "3"))
-
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=max_bytes,
-        backupCount=backup_count,
-        encoding="utf-8",
-    )
-    file_handler.setFormatter(formatter)
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-
+    
     # Avoid duplicate handlers under WSGI reloads.
     logger.handlers = []
-    logger.addHandler(file_handler)
+
+    # Always add console handler for cloud deployments (Render captures stdout/stderr)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
     logger.addHandler(stream_handler)
+
+    # Optional file logging - only if directory exists or can be created
+    log_file = os.getenv("LOG_FILE", os.path.join(BASE_DIR, "app.log"))
+    try:
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        
+        max_bytes = int(os.getenv("LOG_MAX_BYTES", "5000000"))
+        backup_count = int(os.getenv("LOG_BACKUP_COUNT", "3"))
+        
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        logger.info(f"File logging enabled: {log_file}")
+    except (OSError, PermissionError) as e:
+        # Gracefully fall back to console-only logging
+        logger.warning(f"File logging disabled (could not create {log_file}): {e}")
 
     _configure_logging._configured = True
 
