@@ -14,8 +14,12 @@ services:
         value: "1"
       # Set these in Render dashboard (do not commit real values):
       # - SECRET_KEY
+      # - JWT_SECRET (optional, can be same as SECRET_KEY)
       # - USER1 / USER2 ... (username:bcrypt_hash)
+      # - ADMIN_USERS=admin,user2
       # - DATABASE_URL (Supabase Postgres connection string)
       # Optional:
+      # - CORS_ALLOWED_ORIGINS=https://<username>.github.io
+      # - JWT_EXPIRES_SECONDS=28800
       # - DB_SSLMODE=require
       # - LOG_FILE=/var/log/app.log

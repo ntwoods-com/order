@@ -1,12 +1,20 @@
 # ================================
 # api.py - REST API Endpoints
 # ================================
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, current_app, has_app_context, request, jsonify, send_file
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Set
 import jwt
 import os
-from db_utils import connect as db_connect, init_schema
+import re
+import uuid
+
+import bcrypt
+from werkzeug.utils import secure_filename
+
+from db_utils import connect as db_connect
+from generate_sale_order import prepare_data, write_report, generate_unique_order_id
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_FILE = os.getenv('DATABASE_FILE', os.path.join(BASE_DIR, 'order_counter.db'))
@@ -17,7 +25,10 @@ api_bp = Blueprint('api', __name__, url_prefix='/api/v1')
 JWT_SECRET = os.getenv('JWT_SECRET', os.getenv('SECRET_KEY', 'default-secret'))
 
 def get_db_connection():
-    return db_connect(default_sqlite_db_file=DATABASE_FILE)
+    db_file = DATABASE_FILE
+    if has_app_context():
+        db_file = current_app.config.get("DATABASE_FILE", DATABASE_FILE)
+    return db_connect(default_sqlite_db_file=db_file)
 
 
 def _date_prefix_days_ago(days: int) -> str:
@@ -25,22 +36,134 @@ def _date_prefix_days_ago(days: int) -> str:
     return (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
+def _truncate_bcrypt_password(password: str) -> bytes:
+    # bcrypt uses only first 72 bytes.
+    return password.encode("utf-8")[:72]
+
+
+def _check_bcrypt_password(hashed: str, password: str) -> bool:
+    try:
+        return bcrypt.checkpw(_truncate_bcrypt_password(password), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _cors_allowed_origins() -> List[str]:
+    raw = (os.getenv("CORS_ALLOWED_ORIGINS") or "").strip()
+    if not raw:
+        return ["*"]
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return parts or ["*"]
+
+
+@api_bp.before_request
+def _cors_preflight():
+    # Handle browser preflight requests.
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+
+@api_bp.after_request
+def _cors_after(resp):
+    origin = request.headers.get("Origin")
+    if not origin:
+        return resp
+
+    allowed = _cors_allowed_origins()
+    if "*" in allowed:
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+    elif origin in allowed:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Vary"] = "Origin"
+    else:
+        return resp
+
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Authorization,Content-Type"
+    resp.headers["Access-Control-Max-Age"] = "86400"
+    resp.headers["Access-Control-Expose-Headers"] = "Content-Disposition"
+    return resp
+
+
+def _get_client_ip() -> str:
+    forwarded = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    return forwarded or (request.remote_addr or "")
+
+
+def _get_active_session_id(username: str) -> Optional[str]:
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT session_id FROM active_sessions WHERE username = ?",
+            (username,),
+        ).fetchone()
+        return row["session_id"] if row else None
+    finally:
+        conn.close()
+
+
+def _upsert_active_session(username: str, session_id: str) -> None:
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO active_sessions (username, session_id, issued_at, ip, user_agent)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+                session_id = excluded.session_id,
+                issued_at = excluded.issued_at,
+                ip = excluded.ip,
+                user_agent = excluded.user_agent
+            """,
+            (
+                username,
+                session_id,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                _get_client_ip(),
+                (request.headers.get("User-Agent") or "")[:512],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _bearer_token() -> Optional[str]:
+    auth_header = request.headers.get("Authorization") or ""
+    if auth_header.startswith("Bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+    return None
+
+
 # ==================== JWT Authentication ====================
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ')[1]
+        token = _bearer_token()
         
         if not token:
             return jsonify({'success': False, 'error': 'Token is missing', 'code': 'AUTH_REQUIRED'}), 401
         
         try:
             data = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
-            current_user = data['username']
+            current_user = data.get('username')
+            sid = data.get('sid')
+            if not current_user or not sid:
+                return jsonify({'success': False, 'error': 'Invalid token', 'code': 'INVALID_TOKEN'}), 401
+
+            expected_sid = _get_active_session_id(current_user)
+            if not expected_sid or expected_sid != sid:
+                return jsonify({'success': False, 'error': 'Session revoked', 'code': 'SESSION_REVOKED'}), 401
         except jwt.ExpiredSignatureError:
             return jsonify({'success': False, 'error': 'Token expired', 'code': 'TOKEN_EXPIRED'}), 401
         except jwt.InvalidTokenError:
@@ -51,29 +174,574 @@ def token_required(f):
 
 
 def session_or_token_required(f):
-    """Allow either session-based or token-based authentication"""
+    """Token-only auth (frontend is React on GitHub Pages)."""
+    return token_required(f)
+
+
+# ==================== Auth (for React / GitHub Pages) ====================
+@api_bp.route("/auth/login", methods=["POST"])
+def auth_login():
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+
+    if not username or not password:
+        return jsonify({"success": False, "error": "Username and password required"}), 400
+
+    users = (current_app.config.get("USERS_DICT") or {})
+    hashed = users.get(username)
+    if not hashed or not _check_bcrypt_password(hashed, password):
+        return jsonify({"success": False, "error": "Invalid credentials"}), 401
+
+    # Enforce single active session per user (same behavior as previous session-based login).
+    session_id = uuid.uuid4().hex
+    try:
+        _upsert_active_session(username, session_id)
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Login failed: {e}"}), 500
+
+    expires_seconds = _env_int("JWT_EXPIRES_SECONDS", 8 * 60 * 60)
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(seconds=expires_seconds)
+    token = jwt.encode(
+        {
+            "username": username,
+            "sid": session_id,
+            "iat": int(now.timestamp()),
+            "exp": int(exp.timestamp()),
+        },
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+
+    admin_users = [u.strip() for u in (os.getenv("ADMIN_USERS", "admin") or "").split(",") if u.strip()]
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "token": token,
+                "token_type": "Bearer",
+                "expires_at": exp.isoformat(),
+                "username": username,
+                "is_admin": username in admin_users,
+            },
+        }
+    )
+
+
+@api_bp.route("/auth/logout", methods=["POST"])
+@token_required
+def auth_logout(current_user):
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM active_sessions WHERE username = ?", (current_user,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/auth/me", methods=["GET"])
+@session_or_token_required
+def auth_me(current_user):
+    admin_users = [u.strip() for u in (os.getenv("ADMIN_USERS", "admin") or "").split(",") if u.strip()]
+    return jsonify({"success": True, "data": {"username": current_user, "is_admin": current_user in admin_users}})
+
+
+def _admin_users() -> Set[str]:
+    return {u.strip() for u in (os.getenv("ADMIN_USERS", "admin") or "").split(",") if u.strip()}
+
+
+def _require_admin(current_user: str):
+    if current_user not in _admin_users():
+        return jsonify({"success": False, "error": "Admin access required"}), 403
+    return None
+
+
+def admin_required_api(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
-        # First check session
-        if 'user' in session:
-            return f(session['user'], *args, **kwargs)
-        
-        # Then check JWT token
-        token = None
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ')[1]
-        
-        if token:
-            try:
-                data = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
-                return f(data['username'], *args, **kwargs)
-            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-                pass
-        
-        return jsonify({'success': False, 'error': 'Authentication required', 'code': 'AUTH_REQUIRED'}), 401
+    @session_or_token_required
+    def decorated(current_user, *args, **kwargs):
+        denied = _require_admin(current_user)
+        if denied is not None:
+            return denied
+        return f(current_user, *args, **kwargs)
+
     return decorated
+
+
+def _allowed_file(filename: str) -> bool:
+    allowed = current_app.config.get("ALLOWED_EXTENSIONS") or {"xls", "xlsx"}
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
+
+
+def _reject_path_traversal(value: str) -> bool:
+    return (".." in value) or ("/" in value) or ("\\" in value)
+
+
+def _upload_folder() -> str:
+    folder = current_app.config.get("UPLOAD_FOLDER") or os.path.join(BASE_DIR, "uploads")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _report_folder() -> str:
+    folder = current_app.config.get("REPORT_FOLDER") or os.path.join(BASE_DIR, "reports")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _safe_report_name(prefix: str, *, suffix: str) -> str:
+    safe_prefix = re.sub(r"[^a-zA-Z0-9_.-]+", "_", prefix or "REPORT").strip("_") or "REPORT"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{safe_prefix}_{timestamp}_{suffix}.xlsx"
+
+
+# ==================== Admin API (React) ====================
+@api_bp.route("/admin/overview", methods=["GET"])
+@admin_required_api
+def admin_overview(current_user):
+    try:
+        conn = get_db_connection()
+
+        total_orders = conn.execute("SELECT COUNT(*) as c FROM sale_orders").fetchone()["c"]
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_orders = conn.execute(
+            "SELECT COUNT(*) as c FROM sale_orders WHERE generated_at LIKE ?",
+            (f"{today}%",),
+        ).fetchone()["c"]
+        issued_ids = conn.execute("SELECT COUNT(*) as c FROM issued_order_ids").fetchone()["c"]
+        active_sessions = conn.execute("SELECT COUNT(*) as c FROM active_sessions").fetchone()["c"]
+
+        recent_orders = conn.execute(
+            """
+            SELECT order_id, dealer_name, city, username, generated_at
+            FROM sale_orders
+            ORDER BY generated_at DESC
+            LIMIT 10
+            """
+        ).fetchall()
+
+        sessions = conn.execute(
+            """
+            SELECT username, session_id, issued_at, ip, user_agent
+            FROM active_sessions
+            ORDER BY issued_at DESC
+            LIMIT 200
+            """
+        ).fetchall()
+
+        conn.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "data": {
+                    "stats": {
+                        "total_orders": total_orders,
+                        "today_orders": today_orders,
+                        "issued_ids": issued_ids,
+                        "active_sessions": active_sessions,
+                    },
+                    "recent_orders": [dict(o) for o in recent_orders],
+                    "sessions": [dict(s) for s in sessions],
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/admin/users", methods=["GET"])
+@admin_required_api
+def admin_users(current_user):
+    users = sorted((current_app.config.get("USERS_DICT") or {}).keys())
+    admins = _admin_users()
+    return jsonify(
+        {
+            "success": True,
+            "data": [{"username": u, "role": ("admin" if u in admins else "user")} for u in users],
+        }
+    )
+
+
+@api_bp.route("/admin/orders", methods=["GET"])
+@admin_required_api
+def admin_orders(current_user):
+    """All orders with filtering + pagination (admin)."""
+    try:
+        conn = get_db_connection()
+
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 20))
+        per_page = max(1, min(per_page, 200))
+        offset = (page - 1) * per_page
+
+        dealer_name = (request.args.get("dealer_name") or "").strip()
+        city = (request.args.get("city") or "").strip()
+        order_id = (request.args.get("order_id") or "").strip()
+        username = (request.args.get("username") or "").strip()
+        date_from = (request.args.get("date_from") or "").strip()
+        date_to = (request.args.get("date_to") or "").strip()
+
+        conditions = []
+        params = []
+
+        if username:
+            conditions.append("username LIKE ?")
+            params.append(f"%{username}%")
+        if dealer_name:
+            conditions.append("dealer_name LIKE ?")
+            params.append(f"%{dealer_name}%")
+        if city:
+            conditions.append("city LIKE ?")
+            params.append(f"%{city}%")
+        if order_id:
+            conditions.append("order_id LIKE ?")
+            params.append(f"%{order_id}%")
+        if date_from:
+            conditions.append("generated_at >= ?")
+            params.append(date_from)
+        if date_to:
+            conditions.append("generated_at <= ?")
+            params.append(f"{date_to} 23:59:59")
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        total = conn.execute(
+            f"SELECT COUNT(*) as total FROM sale_orders WHERE {where_clause}",
+            tuple(params),
+        ).fetchone()["total"]
+
+        query = f"""
+            SELECT id, username, dealer_name, city, order_id, report_name, generated_at, order_type
+            FROM sale_orders
+            WHERE {where_clause}
+            ORDER BY generated_at DESC
+            LIMIT ? OFFSET ?
+        """
+        page_params = list(params) + [per_page, offset]
+        rows = conn.execute(query, tuple(page_params)).fetchall()
+        conn.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "data": {
+                    "orders": [dict(r) for r in rows],
+                    "pagination": {
+                        "page": page,
+                        "per_page": per_page,
+                        "total": total,
+                        "total_pages": (total + per_page - 1) // per_page,
+                    },
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/admin/sessions", methods=["GET"])
+@admin_required_api
+def admin_sessions(current_user):
+    try:
+        conn = get_db_connection()
+        sessions = conn.execute(
+            """
+            SELECT username, session_id, issued_at, ip, user_agent
+            FROM active_sessions
+            ORDER BY issued_at DESC
+            """
+        ).fetchall()
+        conn.close()
+        return jsonify({"success": True, "data": [dict(s) for s in sessions]})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/admin/sessions/revoke/<username>", methods=["POST"])
+@admin_required_api
+def admin_revoke_session(current_user, username):
+    username = (username or "").strip()
+    if not username:
+        return jsonify({"success": False, "error": "username required"}), 400
+
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM active_sessions WHERE username = ?", (username,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "data": {"username": username}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/admin/sessions/revoke-all", methods=["POST"])
+@admin_required_api
+def admin_revoke_all_sessions(current_user):
+    try:
+        conn = get_db_connection()
+        conn.execute("DELETE FROM active_sessions")
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/admin/logs", methods=["GET"])
+@admin_required_api
+def admin_logs(current_user):
+    lines = _env_int("ADMIN_LOG_LINES_DEFAULT", 500)
+    try:
+        requested = int(request.args.get("lines", lines))
+    except ValueError:
+        requested = lines
+
+    requested = max(1, min(requested, 5000))
+    log_file = os.getenv("LOG_FILE", os.path.join(BASE_DIR, "app.log"))
+
+    if not os.path.exists(log_file):
+        return jsonify({"success": True, "data": {"file": log_file, "lines": []}})
+
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        tail = [ln.rstrip("\n") for ln in all_lines[-requested:]]
+        return jsonify({"success": True, "data": {"file": log_file, "lines": tail}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ==================== Upload + Report Generation (React) ====================
+@api_bp.route("/uploads", methods=["POST"])
+@session_or_token_required
+def create_upload(current_user):
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
+
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    if not _allowed_file(f.filename):
+        return jsonify({"success": False, "error": "Invalid file type. Upload .xls or .xlsx"}), 400
+
+    original_name = secure_filename(f.filename)
+    upload_id = f"{uuid.uuid4().hex}_{original_name}"
+    path = os.path.join(_upload_folder(), upload_id)
+    f.save(path)
+
+    try:
+        size_bytes = os.path.getsize(path)
+    except OSError:
+        size_bytes = None
+
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "upload_id": upload_id,
+                "filename": original_name,
+                "size_bytes": size_bytes,
+                "uploaded_at": datetime.now().isoformat(),
+            },
+        }
+    )
+
+
+@api_bp.route("/reports", methods=["POST"])
+@session_or_token_required
+def generate_report(current_user):
+    payload = request.get_json(silent=True) or {}
+    upload_id = (payload.get("upload_id") or "").strip()
+    dealer_name = (payload.get("dealer_name") or "").strip()
+    city = (payload.get("city") or "").strip()
+    order_date_raw = (payload.get("order_date") or "").strip()  # expected YYYY-MM-DD
+    freight_condition = (payload.get("freight_condition") or "").strip()
+    custom_order_id = (payload.get("custom_order_id") or "").strip()
+    is_additional_order = bool(payload.get("is_additional_order")) or bool(custom_order_id)
+
+    if not upload_id:
+        return jsonify({"success": False, "error": "upload_id is required"}), 400
+    if _reject_path_traversal(upload_id):
+        return jsonify({"success": False, "error": "Invalid upload_id"}), 400
+    if not dealer_name or not city:
+        return jsonify({"success": False, "error": "dealer_name and city are required"}), 400
+
+    upload_path = os.path.join(_upload_folder(), upload_id)
+    if not os.path.exists(upload_path):
+        return jsonify({"success": False, "error": "Upload not found"}), 404
+
+    order_date = ""
+    if order_date_raw:
+        try:
+            order_date = datetime.strptime(order_date_raw, "%Y-%m-%d").strftime("%d-%m-%Y")
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid order_date (expected YYYY-MM-DD)"}), 400
+
+    try:
+        df, _, weight_map, hdmr_map, mdf_map, ply_map, pvc_map, wpc_map = prepare_data(upload_path)
+
+        if custom_order_id:
+            order_id = custom_order_id
+        else:
+            order_id = generate_unique_order_id()
+
+        suffix = "ADDITIONAL_ORDER" if is_additional_order else "SALE_ORDER"
+        report_name = _safe_report_name(dealer_name, suffix=suffix)
+        output_path = os.path.join(_report_folder(), report_name)
+
+        write_report(
+            df,
+            output_path,
+            weight_map,
+            hdmr_map,
+            mdf_map,
+            ply_map,
+            pvc_map,
+            wpc_map,
+            current_user,
+            dealer_name,
+            city,
+            order_date,
+            freight_condition,
+            custom_order_id=order_id,
+            is_additional_order=is_additional_order,
+        )
+
+        try:
+            os.remove(upload_path)
+        except OSError:
+            pass
+
+        return jsonify(
+            {
+                "success": True,
+                "data": {
+                    "order_id": order_id,
+                    "report_name": report_name,
+                },
+            }
+        )
+    except Exception as e:
+        try:
+            os.remove(upload_path)
+        except OSError:
+            pass
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@api_bp.route("/reports/<path:report_name>", methods=["GET"])
+@session_or_token_required
+def download_generated_report(current_user, report_name):
+    if not report_name or _reject_path_traversal(report_name):
+        return jsonify({"success": False, "error": "Invalid report_name"}), 400
+
+    safe_name = os.path.basename(report_name)
+    if safe_name != report_name:
+        return jsonify({"success": False, "error": "Invalid report_name"}), 400
+
+    path = os.path.join(_report_folder(), safe_name)
+    if not os.path.exists(path):
+        return jsonify({"success": False, "error": "Report not found"}), 404
+
+    return send_file(path, as_attachment=True, download_name=safe_name)
+
+
+@api_bp.route("/order-ids/status", methods=["GET"])
+@session_or_token_required
+def order_id_status(current_user):
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            """
+            SELECT order_id
+            FROM (
+                SELECT order_id, generated_at as ts FROM sale_orders
+                UNION ALL
+                SELECT order_id, given_at as ts FROM issued_order_ids
+            ) q
+            ORDER BY ts DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        latest_id = row["order_id"] if row else None
+
+        recent_orders = conn.execute(
+            """
+            SELECT order_id, dealer_name, city, generated_at
+            FROM sale_orders
+            ORDER BY generated_at DESC
+            LIMIT 10
+            """
+        ).fetchall()
+        conn.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+    # Keep same behavior as existing UI.
+    current_month_year = datetime.now().strftime("%m-%y")
+    suggested = f"{current_month_year}-00001"
+    if latest_id:
+        try:
+            parts = latest_id.split("-")
+            if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+                month_year = f"{parts[0]}-{parts[1]}"
+                num_part = parts[2]
+                next_num = int(num_part) + 1 if month_year == current_month_year else 1
+                suggested = f"{current_month_year}-{next_num:05d}"
+        except Exception:
+            pass
+
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "latest_id": latest_id,
+                "suggested_id": suggested,
+                "recent_orders": [dict(o) for o in recent_orders],
+            },
+        }
+    )
+
+
+@api_bp.route("/issued-ids", methods=["POST"])
+@session_or_token_required
+def create_issued_id(current_user):
+    payload = request.get_json(silent=True) or {}
+    order_id = (payload.get("order_id") or "").strip()
+    given_to_name = (payload.get("given_to_name") or "").strip()
+    dealer_name = (payload.get("dealer_name") or "").strip()
+    city = (payload.get("city") or "").strip()
+
+    if not order_id or not given_to_name:
+        return jsonify({"success": False, "error": "order_id and given_to_name are required"}), 400
+
+    try:
+        conn = get_db_connection()
+        existing = conn.execute(
+            "SELECT order_id FROM issued_order_ids WHERE order_id = ?",
+            (order_id,),
+        ).fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"success": False, "error": "Order ID already issued"}), 409
+
+        conn.execute(
+            """
+            INSERT INTO issued_order_ids (order_id, given_to_name, dealer_name, city, given_by_user, given_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (order_id, given_to_name, dealer_name, city, current_user, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "data": {"order_id": order_id, "given_to_name": given_to_name}})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ==================== Dashboard Stats API ====================

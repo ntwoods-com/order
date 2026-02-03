@@ -1,44 +1,66 @@
-# Sale Order System (Flask) — Render Ready
+# Sale Order System (Backend + Frontend)
 
-This repo contains a Flask app for generating and tracking sale orders (upload Excel → generate report → audit/history + dashboard + admin panel).
+- Backend: Flask (deploy to Render)
+- Frontend: React (deploy to GitHub Pages)
 
-## Local setup
+## Backend (local)
 
 1. Install deps:
    - `python -m venv .venv`
    - `.venv\\Scripts\\Activate.ps1`
    - `pip install -r requirements.txt`
-2. Create `.env` (for local dev only):
-   - Copy `.env.example` → `.env`
-   - Generate bcrypt hashes with: `python tools/gen_bcrypt_hash.py`
-3. Run locally:
+2. Create `.env` (local dev only):
+   - Copy `.env.example` -> `.env`
+3. Run:
    - `python app.py`
 
-## Production (Render)
+## Frontend (local)
 
-### Required env vars (Render dashboard → Environment)
+1. `cd frontend`
+2. `npm install`
+3. Create `frontend/.env`:
+   - Copy `frontend/.env.example` -> `frontend/.env`
+   - Set `VITE_API_BASE_URL=http://localhost:5000`
+4. Run:
+   - `npm run dev`
+
+## Deploy backend (Render)
+
+This repo includes `render.yaml` (Blueprint).
+
+Required env vars (Render dashboard -> Environment):
 - `SECRET_KEY` (long random string)
 - `JWT_SECRET` (can be same as `SECRET_KEY`)
 - `USER1`, `USER2`, ... in format `username:bcrypt_hash`
 - `ADMIN_USERS` (comma-separated usernames, e.g. `admin`)
+- `DATABASE_URL` (recommended for production; Render disk is not a reliable DB)
 
-### Database (important)
-Render instances restart/redeploy and the filesystem is not a reliable database. For production you should use Postgres (e.g. Supabase) and set:
-- `DATABASE_URL` (recommended)
-  - If your Supabase URL uses `:6543` (transaction pooler), change it to `:5432` (session mode) for better stability.
+Optional:
+- `CORS_ALLOWED_ORIGINS` (comma-separated) e.g. `https://<username>.github.io`
+- `JWT_EXPIRES_SECONDS` (default 28800)
 
-### Deploy
-- This repo includes `render.yaml` (Blueprint).
-- Start command uses Gunicorn: `wsgi:application`.
-- Health check path: `/api/v1/health`.
+Health check path: `/api/v1/health`
 
-## Render “server sleep” issue (Free plan)
+## Deploy frontend (GitHub Pages)
+
+This repo includes a workflow: `.github/workflows/deploy-frontend.yml`.
+
+1. In GitHub repo settings:
+   - Settings -> Pages -> Source: **GitHub Actions**
+2. Set Actions variable:
+   - Settings -> Secrets and variables -> Actions -> Variables
+   - `VITE_API_BASE_URL` = your Render backend URL (example: `https://your-app.onrender.com`)
+3. Push to `main` -> workflow builds `frontend/` and deploys Pages.
+
+Note: Frontend uses `HashRouter` so refresh/direct links work on GitHub Pages.
+
+## Render "server sleep" issue (Free plan)
 
 Render **Free** web services can spin down when idle. That behavior cannot be fully removed by code.
 
 Options:
 1. Upgrade the Render service plan (always-on).
-2. If you must stay on Free, use an external uptime monitor (e.g. UptimeRobot) to hit `/api/v1/health` every ~5 minutes (this prevents idle spin-down but is still a workaround and you may still see cold starts after deploys).
+2. If you must stay on Free, use an external uptime monitor (e.g. UptimeRobot) to hit `/api/v1/health` every ~5 minutes (workaround; cold starts can still happen).
 
 ## Tools
 
@@ -47,3 +69,4 @@ Options:
   - `python tools/gen_bcrypt_hash.py --env-key USER2 --username user2`
 - Seed demo data (optional):
   - `python tools/seed_demo_data.py --rows 200`
+

@@ -8,3 +8,5 @@ reports/
 order_counter.db
 *.db
 .vscode/
+frontend/node_modules/
+frontend/dist/
