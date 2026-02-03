@@ -115,8 +115,15 @@ def create_app() -> Flask:
     # Used by API auth (/api/v1/auth/login)
     app.config["USERS_DICT"] = _load_users_from_env()
 
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-    os.makedirs(app.config["REPORT_FOLDER"], exist_ok=True)
+    # Only create local directories (skip for cloud storage URLs like Supabase S3)
+    upload_folder = app.config["UPLOAD_FOLDER"]
+    report_folder = app.config["REPORT_FOLDER"]
+    
+    if not upload_folder.startswith(("http://", "https://")):
+        os.makedirs(upload_folder, exist_ok=True)
+    if not report_folder.startswith(("http://", "https://")):
+        os.makedirs(report_folder, exist_ok=True)
+
 
     # Ensure DB schema exists.
     init_schema(default_sqlite_db_file=app.config["DATABASE_FILE"])

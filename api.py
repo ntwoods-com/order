@@ -5,16 +5,19 @@ from flask import Blueprint, current_app, has_app_context, request, jsonify, sen
 from functools import wraps
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Set
+from io import BytesIO
 import jwt
 import os
 import re
 import uuid
+import tempfile
 
 import bcrypt
 from werkzeug.utils import secure_filename
 
 from db_utils import connect as db_connect
 from generate_sale_order import prepare_data, write_report, generate_unique_order_id
+from storage_utils import upload_file, download_file, delete_file, file_exists
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_FILE = os.getenv('DATABASE_FILE', os.path.join(BASE_DIR, 'order_counter.db'))
@@ -282,13 +285,17 @@ def _reject_path_traversal(value: str) -> bool:
 
 def _upload_folder() -> str:
     folder = current_app.config.get("UPLOAD_FOLDER") or os.path.join(BASE_DIR, "uploads")
-    os.makedirs(folder, exist_ok=True)
+    # Only create directory for local paths, not cloud storage URLs
+    if not folder.startswith(("http://", "https://")):
+        os.makedirs(folder, exist_ok=True)
     return folder
 
 
 def _report_folder() -> str:
     folder = current_app.config.get("REPORT_FOLDER") or os.path.join(BASE_DIR, "reports")
-    os.makedirs(folder, exist_ok=True)
+    # Only create directory for local paths, not cloud storage URLs
+    if not folder.startswith(("http://", "https://")):
+        os.makedirs(folder, exist_ok=True)
     return folder
 
 
@@ -529,27 +536,35 @@ def create_upload(current_user):
     if not _allowed_file(f.filename):
         return jsonify({"success": False, "error": "Invalid file type. Upload .xls or .xlsx"}), 400
 
-    original_name = secure_filename(f.filename)
-    upload_id = f"{uuid.uuid4().hex}_{original_name}"
-    path = os.path.join(_upload_folder(), upload_id)
-    f.save(path)
-
     try:
-        size_bytes = os.path.getsize(path)
-    except OSError:
-        size_bytes = None
-
-    return jsonify(
-        {
-            "success": True,
-            "data": {
-                "upload_id": upload_id,
-                "filename": original_name,
-                "size_bytes": size_bytes,
-                "uploaded_at": datetime.now().isoformat(),
-            },
-        }
-    )
+        original_name = secure_filename(f.filename)
+        upload_id = f"{uuid.uuid4().hex}_{original_name}"
+        
+        # Read file content
+        file_content = f.read()
+        size_bytes = len(file_content)
+        
+        # Determine content type
+        content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if original_name.lower().endswith(".xls"):
+            content_type = "application/vnd.ms-excel"
+        
+        # Upload to storage (Supabase or local)
+        upload_file(file_content, f"uploads/{upload_id}", content_type)
+        
+        return jsonify(
+            {
+                "success": True,
+                "data": {
+                    "upload_id": upload_id,
+                    "filename": original_name,
+                    "size_bytes": size_bytes,
+                    "uploaded_at": datetime.now().isoformat(),
+                },
+            }
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Upload failed: {str(e)}"}), 500
 
 
 @api_bp.route("/reports", methods=["POST"])
@@ -571,8 +586,8 @@ def generate_report(current_user):
     if not dealer_name or not city:
         return jsonify({"success": False, "error": "dealer_name and city are required"}), 400
 
-    upload_path = os.path.join(_upload_folder(), upload_id)
-    if not os.path.exists(upload_path):
+    upload_storage_path = f"uploads/{upload_id}"
+    if not file_exists(upload_storage_path):
         return jsonify({"success": False, "error": "Upload not found"}), 404
 
     order_date = ""
@@ -582,8 +597,17 @@ def generate_report(current_user):
         except ValueError:
             return jsonify({"success": False, "error": "Invalid order_date (expected YYYY-MM-DD)"}), 400
 
+    temp_upload_path = None
+    temp_output_path = None
+    
     try:
-        df, _, weight_map, hdmr_map, mdf_map, ply_map, pvc_map, wpc_map = prepare_data(upload_path)
+        # Download uploaded file to temporary location for processing
+        file_data, _ = download_file(upload_storage_path)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            tmp.write(file_data)
+            temp_upload_path = tmp.name
+        
+        df, _, weight_map, hdmr_map, mdf_map, ply_map, pvc_map, wpc_map = prepare_data(temp_upload_path)
 
         if custom_order_id:
             order_id = custom_order_id
@@ -592,11 +616,14 @@ def generate_report(current_user):
 
         suffix = "ADDITIONAL_ORDER" if is_additional_order else "SALE_ORDER"
         report_name = _safe_report_name(dealer_name, suffix=suffix)
-        output_path = os.path.join(_report_folder(), report_name)
+        
+        # Generate report to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            temp_output_path = tmp.name
 
         write_report(
             df,
-            output_path,
+            temp_output_path,
             weight_map,
             hdmr_map,
             mdf_map,
@@ -611,11 +638,23 @@ def generate_report(current_user):
             custom_order_id=order_id,
             is_additional_order=is_additional_order,
         )
-
-        try:
-            os.remove(upload_path)
-        except OSError:
-            pass
+        
+        # Upload report to storage
+        with open(temp_output_path, 'rb') as f:
+            report_data = f.read()
+        
+        upload_file(
+            report_data,
+            f"reports/{report_name}",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        
+        # Clean up uploaded file and temporary files
+        delete_file(upload_storage_path)
+        if temp_upload_path and os.path.exists(temp_upload_path):
+            os.remove(temp_upload_path)
+        if temp_output_path and os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
 
         return jsonify(
             {
@@ -627,10 +666,18 @@ def generate_report(current_user):
             }
         )
     except Exception as e:
-        try:
-            os.remove(upload_path)
-        except OSError:
-            pass
+        # Clean up on error
+        delete_file(upload_storage_path)
+        if temp_upload_path and os.path.exists(temp_upload_path):
+            try:
+                os.remove(temp_upload_path)
+            except:
+                pass
+        if temp_output_path and os.path.exists(temp_output_path):
+            try:
+                os.remove(temp_output_path)
+            except:
+                pass
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -644,11 +691,20 @@ def download_generated_report(current_user, report_name):
     if safe_name != report_name:
         return jsonify({"success": False, "error": "Invalid report_name"}), 400
 
-    path = os.path.join(_report_folder(), safe_name)
-    if not os.path.exists(path):
+    report_storage_path = f"reports/{safe_name}"
+    if not file_exists(report_storage_path):
         return jsonify({"success": False, "error": "Report not found"}), 404
 
-    return send_file(path, as_attachment=True, download_name=safe_name)
+    try:
+        file_data, filename = download_file(report_storage_path)
+        return send_file(
+            BytesIO(file_data),
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Download failed: {str(e)}"}), 500
 
 
 @api_bp.route("/order-ids/status", methods=["GET"])
