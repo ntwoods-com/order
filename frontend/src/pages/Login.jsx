@@ -1,6 +1,19 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
+import {
+  Box,
+  Card,
+  CardContent,
+  TextField,
+  Button,
+  Typography,
+  Alert,
+  Container,
+  Avatar,
+  Stack,
+} from "@mui/material";
+import { Login as LoginIcon, Person, Lock } from "@mui/icons-material";
 
 export default function Login() {
   const { user, login } = useAuth();
@@ -30,64 +43,106 @@ export default function Login() {
   }
 
   return (
-    <div className="login-wrapper">
-      <div className="login-card">
-        {/* Header with Logo */}
-        <div className="login-header">
-          <div className="login-logo">
-            <div className="logo-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="24" height="24" rx="6" fill="url(#logo-gradient)" />
-                <defs>
-                  <linearGradient id="logo-gradient" x1="0" y1="0" x2="24" y2="24">
-                    <stop offset="0%" stopColor="#6366f1" />
-                    <stop offset="100%" stopColor="#8b5cf6" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-            <h1 className="login-title">Sale Order System</h1>
-          </div>
-          <p className="login-credit">Designed & Developed by Rajesh Jadoun</p>
-          <p className="login-subtitle">Please login to continue</p>
-        </div>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: 2,
+      }}
+    >
+      <Container maxWidth="sm">
+        <Card
+          elevation={24}
+          sx={{
+            borderRadius: 4,
+            overflow: 'visible',
+          }}
+        >
+          <CardContent sx={{ p: 5 }}>
+            <Stack spacing={3} alignItems="center">
+              {/* Logo/Icon */}
+              <Avatar
+                sx={{
+                  width: 80,
+                  height: 80,
+                  bgcolor: 'primary.main',
+                  boxShadow: '0 8px 16px rgba(59, 130, 246, 0.3)',
+                }}
+              >
+                <LoginIcon sx={{ fontSize: 40 }} />
+              </Avatar>
 
-        {/* Alert Banner - Only show on error */}
-        {error && <div className="login-alert">{error}</div>}
+              {/* Title */}
+              <Box textAlign="center">
+                <Typography variant="h4" fontWeight="bold" gutterBottom>
+                  Sale Order System
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Sign in to your account to continue
+                </Typography>
+                <Typography variant="caption" color="text.secondary" mt={1} display="block">
+                  Designed & Developed by Rajesh Jadoun
+                </Typography>
+              </Box>
 
-        {/* Login Form */}
-        <form onSubmit={onSubmit} className="login-form">
-          <div className="login-field">
-            <label>
-              <span className="field-icon">👤</span>
-              Username
-            </label>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              placeholder="Enter your username"
-            />
-          </div>
-          <div className="login-field">
-            <label>
-              <span className="field-icon">🔒</span>
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="Enter your password"
-            />
-          </div>
-          <button type="submit" className="login-btn" disabled={busy}>
-            <span className="btn-sparkle">✨</span>
-            {busy ? "Logging in..." : "Login"}
-          </button>
-        </form>
-      </div>
-    </div>
+              {/* Error Alert */}
+              {error && (
+                <Alert severity="error" sx={{ width: '100%' }}>
+                  {error}
+                </Alert>
+              )}
+
+              {/* Form */}
+              <Box component="form" onSubmit={onSubmit} sx={{ width: '100%' }}>
+                <Stack spacing={2.5}>
+                  <TextField
+                    fullWidth
+                    label="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
+                    placeholder="Enter your username"
+                    disabled={busy}
+                    InputProps={{
+                      startAdornment: <Person sx={{ mr: 1, color: 'action.active' }} />,
+                    }}
+                    required
+                  />
+
+                  <TextField
+                    fullWidth
+                    type="password"
+                    label="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    placeholder="Enter your password"
+                    disabled={busy}
+                    InputProps={{
+                      startAdornment: <Lock sx={{ mr: 1, color: 'action.active' }} />,
+                    }}
+                    required
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    disabled={busy}
+                    sx={{ mt: 2, py: 1.5 }}
+                  >
+                    {busy ? "Signing in..." : "Sign In"}
+                  </Button>
+                </Stack>
+              </Box>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Container>
+    </Box>
   );
 }

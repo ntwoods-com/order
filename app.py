@@ -133,5 +133,5 @@ app = create_app()
 if __name__ == "__main__":
     debug = _env_bool("FLASK_DEBUG", default=False)
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "5002"))
+    port = int(os.getenv("PORT", "5000"))
     app.run(debug=debug, host=host, port=port)

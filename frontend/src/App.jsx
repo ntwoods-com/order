@@ -1,10 +1,13 @@
 import React from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { ThemeProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
 import { AuthProvider } from "./auth/AuthContext.jsx";
-import { ThemeProvider } from "./auth/ThemeContext.jsx";
+import { ThemeProvider as CustomThemeProvider } from "./auth/ThemeContext.jsx";
 import RequireAuth from "./components/RequireAuth.jsx";
 import RequireAdmin from "./components/RequireAdmin.jsx";
 import Layout from "./components/Layout.jsx";
+import theme from "./theme.js";
 
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -25,42 +28,45 @@ import NotFound from "./pages/NotFound.jsx";
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <HashRouter>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <CustomThemeProvider>
+        <HashRouter>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            <Route element={<RequireAuth />}>
-              <Route element={<Layout />}>
-                <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<Dashboard />} />
+              <Route element={<RequireAuth />}>
+                <Route element={<Layout />}>
+                  <Route index element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
 
-                <Route path="/new/upload" element={<NewUpload />} />
-                <Route path="/new/details" element={<NewDetails />} />
+                  <Route path="/new/upload" element={<NewUpload />} />
+                  <Route path="/new/details" element={<NewDetails />} />
 
-                <Route path="/additional/upload" element={<AdditionalUpload />} />
-                <Route path="/additional/details" element={<AdditionalDetails />} />
+                  <Route path="/additional/upload" element={<AdditionalUpload />} />
+                  <Route path="/additional/details" element={<AdditionalDetails />} />
 
-                <Route path="/orders" element={<Orders />} />
-                <Route path="/search" element={<Search />} />
-                <Route path="/order-id" element={<OrderIdStatus />} />
-                <Route path="/issue-order-id" element={<IssueOrderId />} />
+                  <Route path="/orders" element={<Orders />} />
+                  <Route path="/search" element={<Search />} />
+                  <Route path="/order-id" element={<OrderIdStatus />} />
+                  <Route path="/issue-order-id" element={<IssueOrderId />} />
 
-                <Route element={<RequireAdmin />}>
-                  <Route path="/admin" element={<AdminOverview />} />
-                  <Route path="/admin/users" element={<AdminUsers />} />
-                  <Route path="/admin/orders" element={<AdminOrders />} />
-                  <Route path="/admin/sessions" element={<AdminSessions />} />
-                  <Route path="/admin/logs" element={<AdminLogs />} />
+                  <Route element={<RequireAdmin />}>
+                    <Route path="/admin" element={<AdminOverview />} />
+                    <Route path="/admin/users" element={<AdminUsers />} />
+                    <Route path="/admin/orders" element={<AdminOrders />} />
+                    <Route path="/admin/sessions" element={<AdminSessions />} />
+                    <Route path="/admin/logs" element={<AdminLogs />} />
+                  </Route>
                 </Route>
               </Route>
-            </Route>
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AuthProvider>
-      </HashRouter>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
+        </HashRouter>
+      </CustomThemeProvider>
     </ThemeProvider>
   );
 }

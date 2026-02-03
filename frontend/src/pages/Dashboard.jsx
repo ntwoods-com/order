@@ -1,5 +1,30 @@
 import React from "react";
 import * as api from "../api/client.js";
+import {
+  Box,
+  Grid,
+  Card,
+  CardContent,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  CircularProgress,
+  Alert,
+  Stack,
+  Divider,
+} from "@mui/material";
+import {
+  TrendingUp,
+  ShoppingCart,
+  Today,
+  CalendarMonth,
+} from "@mui/icons-material";
 
 export default function Dashboard() {
   const [data, setData] = React.useState(null);
@@ -21,110 +46,211 @@ export default function Dashboard() {
     };
   }, []);
 
+  const kpiCards = data ? [
+    {
+      label: "Total Orders",
+      value: data.overview.total_orders,
+      icon: <TrendingUp sx={{ fontSize: 40 }} />,
+      color: "primary",
+    },
+    {
+      label: "My Orders",
+      value: data.overview.user_orders,
+      icon: <ShoppingCart sx={{ fontSize: 40 }} />,
+      color: "secondary",
+    },
+    {
+      label: "Today's Orders",
+      value: data.overview.today_orders,
+      icon: <Today sx={{ fontSize: 40 }} />,
+      color: "success",
+    },
+    {
+      label: "This Month",
+      value: data.overview.month_orders,
+      icon: <CalendarMonth sx={{ fontSize: 40 }} />,
+      color: "info",
+    },
+  ] : [];
+
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 style={{ margin: 0 }}>Dashboard</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          Overview + quick stats
-        </p>
-      </div>
-      <div className="card-body">
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        {!data ? (
-          <div className="muted">Loading...</div>
-        ) : (
-          <>
-            <div className="row">
-              <div className="col card kpi">
-                <div className="label">Total Orders</div>
-                <div className="value">{data.overview.total_orders}</div>
-              </div>
-              <div className="col card kpi">
-                <div className="label">My Orders</div>
-                <div className="value">{data.overview.user_orders}</div>
-              </div>
-              <div className="col card kpi">
-                <div className="label">Today</div>
-                <div className="value">{data.overview.today_orders}</div>
-              </div>
-              <div className="col card kpi">
-                <div className="label">This Month</div>
-                <div className="value">{data.overview.month_orders}</div>
-              </div>
-            </div>
+    <Box>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" fontWeight="bold" gutterBottom>
+          Dashboard
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Overview and quick statistics • {new Date().toLocaleDateString()}
+        </Typography>
+      </Box>
 
-            <div style={{ height: 14 }} />
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
 
-            <div className="split">
-              <div className="card">
-                <div className="card-header">
-                  <h3 style={{ margin: 0 }}>Recent Orders</h3>
-                </div>
-                <div className="card-body">
+      {!data ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <Stack spacing={2} alignItems="center">
+            <CircularProgress />
+            <Typography color="text.secondary">Loading dashboard data...</Typography>
+          </Stack>
+        </Box>
+      ) : (
+        <>
+          {/* KPI Cards */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {kpiCards.map((kpi, idx) => (
+              <Grid item xs={12} sm={6} md={3} key={idx}>
+                <Card
+                  elevation={2}
+                  sx={{
+                    position: 'relative',
+                    overflow: 'visible',
+                    transition: 'all 0.3s',
+                    '&:hover': {
+                      transform: 'translateY(-8px)',
+                      boxShadow: 6,
+                    },
+                  }}
+                >
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                      <Box>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          {kpi.label}
+                        </Typography>
+                        <Typography variant="h4" fontWeight="bold" color={`${kpi.color}.main`}>
+                          {kpi.value}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ color: `${kpi.color}.main`, opacity: 0.3 }}>
+                        {kpi.icon}
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Tables */}
+          <Grid container spacing={3}>
+            {/* Recent Orders Table */}
+            <Grid item xs={12} lg={7}>
+              <Card elevation={2}>
+                <CardContent>
+                  <Typography variant="h6" fontWeight="bold" gutterBottom>
+                    Recent Orders
+                  </Typography>
+                  <Divider sx={{ my: 2 }} />
+
                   {data.recent_orders?.length ? (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Order ID</th>
-                          <th>Dealer</th>
-                          <th>City</th>
-                          <th>User</th>
-                          <th>Generated</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.recent_orders.map((o) => (
-                          <tr key={`${o.order_id}-${o.generated_at}`}>
-                            <td>{o.order_id}</td>
-                            <td>{o.dealer_name}</td>
-                            <td>{o.city}</td>
-                            <td>{o.username}</td>
-                            <td>{o.generated_at}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell><strong>Order ID</strong></TableCell>
+                            <TableCell><strong>Dealer</strong></TableCell>
+                            <TableCell><strong>City</strong></TableCell>
+                            <TableCell><strong>User</strong></TableCell>
+                            <TableCell><strong>Generated</strong></TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {data.recent_orders.map((o) => (
+                            <TableRow
+                              key={`${o.order_id}-${o.generated_at}`}
+                              hover
+                              sx={{ '&:last-child td': { border: 0 } }}
+                            >
+                              <TableCell>
+                                <Chip
+                                  label={o.order_id}
+                                  size="small"
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                              </TableCell>
+                              <TableCell>{o.dealer_name}</TableCell>
+                              <TableCell>{o.city}</TableCell>
+                              <TableCell>{o.username}</TableCell>
+                              <TableCell>
+                                <Typography variant="caption" color="text.secondary">
+                                  {new Date(o.generated_at).toLocaleString()}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   ) : (
-                    <div className="muted">No recent orders.</div>
+                    <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                      No recent orders found.
+                    </Typography>
                   )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
+            </Grid>
 
-              <div className="card">
-                <div className="card-header">
-                  <h3 style={{ margin: 0 }}>Top Dealers</h3>
-                </div>
-                <div className="card-body">
+            {/* Top Dealers Table */}
+            <Grid item xs={12} lg={5}>
+              <Card elevation={2}>
+                <CardContent>
+                  <Typography variant="h6" fontWeight="bold" gutterBottom>
+                    Top Dealers
+                  </Typography>
+                  <Divider sx={{ my: 2 }} />
+
                   {data.top_dealers?.length ? (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Dealer</th>
-                          <th>City</th>
-                          <th>Orders</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.top_dealers.map((d) => (
-                          <tr key={`${d.dealer_name}-${d.city}`}>
-                            <td>{d.dealer_name}</td>
-                            <td>{d.city}</td>
-                            <td>{d.order_count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell><strong>Dealer</strong></TableCell>
+                            <TableCell><strong>City</strong></TableCell>
+                            <TableCell align="right"><strong>Orders</strong></TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {data.top_dealers.map((d) => (
+                            <TableRow
+                              key={`${d.dealer_name}-${d.city}`}
+                              hover
+                              sx={{ '&:last-child td': { border: 0 } }}
+                            >
+                              <TableCell>
+                                <Typography fontWeight="500" color="primary.main">
+                                  {d.dealer_name}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>{d.city}</TableCell>
+                              <TableCell align="right">
+                                <Chip
+                                  label={d.order_count}
+                                  size="small"
+                                  color="success"
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   ) : (
-                    <div className="muted">No data.</div>
+                    <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                      No dealer data available.
+                    </Typography>
                   )}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </>
+      )}
+    </Box>
   );
 }
-

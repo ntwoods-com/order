@@ -1,6 +1,25 @@
 import React from "react";
 import * as api from "../api/client.js";
 import { triggerDownload } from "../components/download.js";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  Alert,
+  CircularProgress,
+  Stack,
+  Chip,
+  Pagination,
+} from "@mui/material";
+import { Download } from "@mui/icons-material";
 
 export default function Orders() {
   const [rows, setRows] = React.useState([]);
@@ -36,65 +55,86 @@ export default function Orders() {
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 style={{ margin: 0 }}>My Orders</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          Latest generated orders (download from here anytime)
-        </p>
-      </div>
-      <div className="card-body">
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        {busy ? (
-          <div className="muted">Loading...</div>
-        ) : rows.length ? (
-          <>
-            <table>
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Dealer</th>
-                  <th>City</th>
-                  <th>Generated</th>
-                  <th>Report</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((o) => (
-                  <tr key={o.id}>
-                    <td>{o.order_id}</td>
-                    <td>{o.dealer_name}</td>
-                    <td>{o.city}</td>
-                    <td>{o.generated_at}</td>
-                    <td style={{ fontSize: 12 }}>{o.report_name}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      <button className="btn btn-primary" onClick={() => onDownload(o.report_name)}>
-                        Download
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ height: 12 }} />
-            <div className="row">
-              <button className="btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
-                Prev
-              </button>
-              <button className="btn" onClick={() => setPage((p) => p + 1)} disabled={rows.length < perPage}>
-                Next
-              </button>
-              <span className="muted" style={{ alignSelf: "center" }}>
-                Page {page}
-              </span>
-            </div>
-          </>
-        ) : (
-          <div className="muted">No orders yet.</div>
-        )}
-      </div>
-    </div>
+    <Card elevation={2}>
+      <CardContent>
+        <Stack spacing={3}>
+          <Box>
+            <Typography variant="h5" fontWeight="bold" gutterBottom>
+              My Orders
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Latest generated orders (download from here anytime)
+            </Typography>
+          </Box>
+
+          {error && <Alert severity="error">{error}</Alert>}
+
+          {busy ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : rows.length ? (
+            <>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Order ID</strong></TableCell>
+                      <TableCell><strong>Dealer</strong></TableCell>
+                      <TableCell><strong>City</strong></TableCell>
+                      <TableCell><strong>Generated</strong></TableCell>
+                      <TableCell><strong>Report</strong></TableCell>
+                      <TableCell align="right"><strong>Action</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((o) => (
+                      <TableRow key={o.id} hover>
+                        <TableCell>
+                          <Chip label={o.order_id} color="primary" size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell>{o.dealer_name}</TableCell>
+                        <TableCell>{o.city}</TableCell>
+                        <TableCell>
+                          <Typography variant="caption" color="text.secondary">
+                            {o.generated_at}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption">{o.report_name}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Button
+                            variant="contained"
+                            size="small"
+                            startIcon={<Download />}
+                            onClick={() => onDownload(o.report_name)}
+                          >
+                            Download
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <Pagination
+                  count={rows.length < perPage ? page : page + 1}
+                  page={page}
+                  onChange={(e, value) => setPage(value)}
+                  color="primary"
+                />
+              </Box>
+            </>
+          ) : (
+            <Typography color="text.secondary" textAlign="center" py={4}>
+              No orders yet.
+            </Typography>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }
-

@@ -1,6 +1,16 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../api/client.js";
+import {
+  Box,
+  Card,
+  CardContent,
+  Button,
+  Typography,
+  Alert,
+  Stack,
+} from "@mui/material";
+import { CloudUpload, CheckCircle } from "@mui/icons-material";
 
 const UPLOAD_KEY = "sale_order_upload_additional";
 
@@ -38,27 +48,60 @@ export default function AdditionalUpload() {
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 style={{ margin: 0 }}>Additional Order - Upload Excel</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          Generates a report using an existing Order ID.
-        </p>
-      </div>
-      <div className="card-body">
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        <div className="field">
-          <label>Excel File</label>
-          <input type="file" accept=".xls,.xlsx" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-          <p className="muted" style={{ margin: "8px 0 0 0", fontSize: 13 }}>
-            {file ? `Selected: ${file.name} (${Math.round(file.size / 1024)} KB)` : "No file selected"}
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={onUpload} disabled={!file || busy}>
-          {busy ? "Uploading..." : "Upload & Continue"}
-        </button>
-      </div>
-    </div>
+    <Card elevation={2}>
+      <CardContent>
+        <Stack spacing={3}>
+          <Box>
+            <Typography variant="h5" fontWeight="bold" gutterBottom>
+              Additional Order - Upload Excel
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Generates a report using an existing Order ID
+            </Typography>
+          </Box>
+
+          {error && <Alert severity="error">{error}</Alert>}
+
+          <Box>
+            <Button
+              component="label"
+              variant="outlined"
+              startIcon={<CloudUpload />}
+              size="large"
+              fullWidth
+              sx={{ py: 2 }}
+            >
+              Choose Excel File
+              <input
+                type="file"
+                hidden
+                accept=".xls,.xlsx"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+              />
+            </Button>
+
+            {file && (
+              <Alert
+                severity="success"
+                icon={<CheckCircle />}
+                sx={{ mt: 2 }}
+              >
+                <strong>{file.name}</strong> ({Math.round(file.size / 1024)} KB)
+              </Alert>
+            )}
+          </Box>
+
+          <Button
+            variant="contained"
+            size="large"
+            onClick={onUpload}
+            disabled={!file || busy}
+            fullWidth
+          >
+            {busy ? "Uploading..." : "Upload & Continue"}
+          </Button>
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }
-

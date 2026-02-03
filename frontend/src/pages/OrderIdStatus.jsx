@@ -1,5 +1,25 @@
 import React from "react";
 import * as api from "../api/client.js";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Alert,
+  CircularProgress,
+  Stack,
+  Chip,
+  Paper,
+} from "@mui/material";
+import { Refresh, TrendingUp } from "@mui/icons-material";
 
 export default function OrderIdStatus() {
   const [data, setData] = React.useState(null);
@@ -20,75 +40,109 @@ export default function OrderIdStatus() {
   }, []);
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 style={{ margin: 0 }}>Order ID Status</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          Latest + suggested next Order ID.
-        </p>
-      </div>
-      <div className="card-body">
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        {!data ? (
-          <div className="muted">Loading...</div>
-        ) : (
-          <>
-            <div className="row">
-              <div className="col card kpi">
-                <div className="label">Latest</div>
-                <div className="value" style={{ fontSize: 22 }}>
-                  {data.latest_id || "None"}
-                </div>
-              </div>
-              <div className="col card kpi">
-                <div className="label">Suggested</div>
-                <div className="value" style={{ fontSize: 22 }}>
-                  {data.suggested_id}
-                </div>
-              </div>
-            </div>
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="h5" fontWeight="bold" gutterBottom>
+          Order ID Status
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Latest and suggested next Order ID
+        </Typography>
+      </Box>
 
-            <div style={{ height: 14 }} />
+      {error && <Alert severity="error">{error}</Alert>}
 
-            <div className="card">
-              <div className="card-header">
-                <h3 style={{ margin: 0 }}>Recent Orders</h3>
-              </div>
-              <div className="card-body">
-                {data.recent_orders?.length ? (
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Order ID</th>
-                        <th>Dealer</th>
-                        <th>City</th>
-                        <th>Generated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+      {!data ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <Card elevation={3} sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                <CardContent>
+                  <Typography variant="body2" color="white" gutterBottom>
+                    Latest Order ID
+                  </Typography>
+                  <Typography variant="h4" fontWeight="bold" color="white">
+                    {data.latest_id || "None"}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Card elevation={3} sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+                <CardContent>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <TrendingUp sx={{ color: 'white' }} />
+                    <Box>
+                      <Typography variant="body2" color="white" gutterBottom>
+                        Suggested Next ID
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold" color="white">
+                        {data.suggested_id}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>
+                Recent Orders
+              </Typography>
+
+              {data.recent_orders?.length ? (
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Order ID</strong></TableCell>
+                        <TableCell><strong>Dealer</strong></TableCell>
+                        <TableCell><strong>City</strong></TableCell>
+                        <TableCell><strong>Generated</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
                       {data.recent_orders.map((o) => (
-                        <tr key={`${o.order_id}-${o.generated_at}`}>
-                          <td>{o.order_id}</td>
-                          <td>{o.dealer_name}</td>
-                          <td>{o.city}</td>
-                          <td>{o.generated_at}</td>
-                        </tr>
+                        <TableRow key={`${o.order_id}-${o.generated_at}`} hover>
+                          <TableCell>
+                            <Chip label={o.order_id} color="primary" size="small" variant="outlined" />
+                          </TableCell>
+                          <TableCell>{o.dealer_name}</TableCell>
+                          <TableCell>{o.city}</TableCell>
+                          <TableCell>
+                            <Typography variant="caption" color="text.secondary">
+                              {o.generated_at}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="muted">No recent orders.</div>
-                )}
-              </div>
-            </div>
-            <div style={{ height: 12 }} />
-            <button className="btn" onClick={load}>
-              Refresh
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography color="text.secondary" textAlign="center" py={2}>
+                  No recent orders.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={load}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            Refresh
+          </Button>
+        </>
+      )}
+    </Stack>
   );
 }
-

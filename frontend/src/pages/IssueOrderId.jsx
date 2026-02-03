@@ -1,5 +1,24 @@
 import React from "react";
 import * as api from "../api/client.js";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Alert,
+  Grid,
+  Stack,
+  Chip,
+} from "@mui/material";
+import { Send } from "@mui/icons-material";
 
 export default function IssueOrderId() {
   const [suggested, setSuggested] = React.useState("");
@@ -55,83 +74,124 @@ export default function IssueOrderId() {
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 style={{ margin: 0 }}>Issue Order ID</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          Assign order IDs to team members/dealers.
-        </p>
-      </div>
-      <div className="card-body">
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        {ok ? <div className="alert alert-success">{ok}</div> : null}
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="h5" fontWeight="bold" gutterBottom>
+          Issue Order ID
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Assign order IDs to team members/dealers
+        </Typography>
+      </Box>
 
-        <div className="split">
-          <div className="card">
-            <div className="card-header">
-              <h3 style={{ margin: 0 }}>Issue New</h3>
-            </div>
-            <div className="card-body">
-              <form onSubmit={onSubmit}>
-                <div className="field">
-                  <label>Order ID *</label>
-                  <input value={orderId} onChange={(e) => setOrderId(e.target.value.toUpperCase())} required />
-                </div>
-                <div className="field">
-                  <label>Given To *</label>
-                  <input value={givenTo} onChange={(e) => setGivenTo(e.target.value)} required />
-                </div>
-                <div className="field">
-                  <label>Dealer Name</label>
-                  <input value={dealerName} onChange={(e) => setDealerName(e.target.value)} />
-                </div>
-                <div className="field">
-                  <label>City</label>
-                  <input value={city} onChange={(e) => setCity(e.target.value)} />
-                </div>
-                <button className="btn btn-primary" disabled={busy}>
-                  {busy ? "Issuing..." : "Issue"}
-                </button>
-              </form>
-            </div>
-          </div>
+      {error && <Alert severity="error">{error}</Alert>}
+      {ok && <Alert severity="success">{ok}</Alert>}
 
-          <div className="card">
-            <div className="card-header">
-              <h3 style={{ margin: 0 }}>Recently Issued</h3>
-            </div>
-            <div className="card-body">
+      <Grid container spacing={3}>
+        {/* Issue Form */}
+        <Grid item xs={12} md={6}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>
+                Issue New ID
+              </Typography>
+
+              <Box component="form" onSubmit={onSubmit}>
+                <Stack spacing={2}>
+                  <TextField
+                    fullWidth
+                    label="Order ID"
+                    value={orderId}
+                    onChange={(e) => setOrderId(e.target.value.toUpperCase())}
+                    required
+                    inputProps={{ style: { textTransform: 'uppercase' } }}
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Given To"
+                    value={givenTo}
+                    onChange={(e) => setGivenTo(e.target.value)}
+                    required
+                    placeholder="Person/Team name"
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Dealer Name"
+                    value={dealerName}
+                    onChange={(e) => setDealerName(e.target.value)}
+                    placeholder="Optional"
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="City"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Optional"
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    disabled={busy}
+                    startIcon={<Send />}
+                    fullWidth
+                  >
+                    {busy ? "Issuing..." : "Issue ID"}
+                  </Button>
+                </Stack>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Recently Issued */}
+        <Grid item xs={12} md={6}>
+          <Card elevation={2}>
+            <CardContent>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>
+                Recently Issued
+              </Typography>
+
               {recent.length ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Order ID</th>
-                      <th>Given To</th>
-                      <th>Dealer</th>
-                      <th>When</th>
-                      <th>By</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.map((r) => (
-                      <tr key={r.id}>
-                        <td>{r.order_id}</td>
-                        <td>{r.given_to_name}</td>
-                        <td>{r.dealer_name || "-"}</td>
-                        <td>{r.given_at}</td>
-                        <td>{r.given_by_user}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Order ID</strong></TableCell>
+                        <TableCell><strong>Given To</strong></TableCell>
+                        <TableCell><strong>When</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {recent.map((r) => (
+                        <TableRow key={r.id} hover>
+                          <TableCell>
+                            <Chip label={r.order_id} size="small" color="secondary" />
+                          </TableCell>
+                          <TableCell>{r.given_to_name}</TableCell>
+                          <TableCell>
+                            <Typography variant="caption" color="text.secondary">
+                              {r.given_at}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               ) : (
-                <div className="muted">No issued IDs yet.</div>
+                <Typography color="text.secondary" textAlign="center" py={2}>
+                  No issued IDs yet.
+                </Typography>
               )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Stack>
   );
 }
-

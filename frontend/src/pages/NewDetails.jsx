@@ -3,6 +3,19 @@ import { useNavigate } from "react-router-dom";
 import * as api from "../api/client.js";
 import { triggerDownload } from "../components/download.js";
 import { getNewUploadState, setNewUploadState } from "./NewUpload.jsx";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  Alert,
+  Grid,
+  Stack,
+  Chip,
+} from "@mui/material";
+import { Download, NavigateNext, Add } from "@mui/icons-material";
 
 export default function NewDetails() {
   const navigate = useNavigate();
@@ -50,73 +63,116 @@ export default function NewDetails() {
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h2 style={{ margin: 0 }}>New Order - Details</h2>
-        <p className="muted" style={{ marginTop: 6 }}>
-          File: <code>{upload?.filename}</code>
-        </p>
-      </div>
-      <div className="card-body">
-        {error ? <div className="alert alert-error">{error}</div> : null}
-        {result ? (
-          <div className="alert alert-success">
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Report generated</div>
-            <div className="muted" style={{ fontSize: 13 }}>
-              Order ID: <code>{result.order_id}</code>
-              <br />
-              Report: <code>{result.report_name}</code>
-            </div>
-            <div style={{ height: 12 }} />
-            <div className="row">
-              <button className="btn btn-primary" onClick={onDownload}>
-                Download
-              </button>
-              <button className="btn" onClick={() => navigate("/orders")}>
-                Go to My Orders
-              </button>
-              <button className="btn" onClick={() => navigate("/new/upload")}>
-                Create Another
-              </button>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={onGenerate}>
-            <div className="row">
-              <div className="col">
-                <div className="field">
-                  <label>Dealer Name *</label>
-                  <input value={dealerName} onChange={(e) => setDealerName(e.target.value)} required />
-                </div>
-              </div>
-              <div className="col">
-                <div className="field">
-                  <label>City *</label>
-                  <input value={city} onChange={(e) => setCity(e.target.value)} required />
-                </div>
-              </div>
-            </div>
-            <div className="row">
-              <div className="col">
-                <div className="field">
-                  <label>Order Date *</label>
-                  <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} required />
-                </div>
-              </div>
-              <div className="col">
-                <div className="field">
-                  <label>Freight Condition</label>
-                  <input value={freight} onChange={(e) => setFreight(e.target.value)} placeholder="e.g. FOB" />
-                </div>
-              </div>
-            </div>
-            <button className="btn btn-primary" disabled={busy}>
-              {busy ? "Generating..." : "Generate Report"}
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
+    <Card elevation={2}>
+      <CardContent>
+        <Stack spacing={3}>
+          <Box>
+            <Typography variant="h5" fontWeight="bold" gutterBottom>
+              New Order - Details
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              File: <Chip label={upload?.filename} size="small" />
+            </Typography>
+          </Box>
+
+          {error && <Alert severity="error">{error}</Alert>}
+
+          {result ? (
+            <Alert severity="success">
+              <Typography fontWeight="bold" gutterBottom>
+                Report Generated Successfully!
+              </Typography>
+              <Typography variant="body2" gutterBottom>
+                Order ID: <Chip label={result.order_id} color="primary" size="small" />
+              </Typography>
+              <Typography variant="body2" gutterBottom>
+                Report: <Chip label={result.report_name} size="small" />
+              </Typography>
+
+              <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<Download />}
+                  onClick={onDownload}
+                >
+                  Download
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => navigate("/orders")}
+                >
+                  Go to My Orders
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Add />}
+                  onClick={() => navigate("/new/upload")}
+                >
+                  Create Another
+                </Button>
+              </Stack>
+            </Alert>
+          ) : (
+            <Box component="form" onSubmit={onGenerate}>
+              <Stack spacing={2.5}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Dealer Name"
+                      value={dealerName}
+                      onChange={(e) => setDealerName(e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="City"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      required
+                    />
+                  </Grid>
+                </Grid>
+
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Order Date"
+                      type="date"
+                      value={orderDate}
+                      onChange={(e) => setOrderDate(e.target.value)}
+                      required
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Freight Condition"
+                      value={freight}
+                      onChange={(e) => setFreight(e.target.value)}
+                      placeholder="e.g. FOB"
+                    />
+                  </Grid>
+                </Grid>
+
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  disabled={busy}
+                  endIcon={<NavigateNext />}
+                >
+                  {busy ? "Generating..." : "Generate Report"}
+                </Button>
+              </Stack>
+            </Box>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
   );
 }
-
