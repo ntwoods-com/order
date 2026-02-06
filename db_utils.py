@@ -1,8 +1,11 @@
+import logging
 import os
 from functools import lru_cache
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
 from sqlalchemy import create_engine, text
+
+logger = logging.getLogger(__name__)
 
 
 def _base_dir() -> str:
@@ -107,7 +110,12 @@ class DBConn:
         self._conn.commit()
 
     def close(self) -> None:
-        self._conn.close()
+        try:
+            self._conn.close()
+        except Exception as e:
+            # If the underlying connection is already broken (e.g. intermittent SSL/network issues),
+            # SQLAlchemy may raise while rolling back/closing. Don't let cleanup mask the real error.
+            logger.warning("DB connection close failed: %s", e)
 
 
 def connect(*, default_sqlite_db_file: str) -> DBConn:

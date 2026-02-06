@@ -165,7 +165,21 @@ def token_required(f):
             if not current_user or not sid:
                 return jsonify({'success': False, 'error': 'Invalid token', 'code': 'INVALID_TOKEN'}), 401
 
-            expected_sid = _get_active_session_id(current_user)
+            try:
+                expected_sid = _get_active_session_id(current_user)
+            except Exception as e:
+                # If DB is temporarily unavailable (network/SSL issues), don't treat it as an auth failure.
+                current_app.logger.error("Auth session check failed (db error): %s", e)
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Auth temporarily unavailable, please retry",
+                            "code": "DB_UNAVAILABLE",
+                        }
+                    ),
+                    503,
+                )
             if not expected_sid or expected_sid != sid:
                 return jsonify({'success': False, 'error': 'Session revoked', 'code': 'SESSION_REVOKED'}), 401
         except jwt.ExpiredSignatureError:
