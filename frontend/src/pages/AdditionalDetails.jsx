@@ -14,6 +14,7 @@ import {
   Grid,
   Stack,
   Chip,
+  CircularProgress,
 } from "@mui/material";
 import { Download, NavigateNext, Add } from "@mui/icons-material";
 
@@ -28,11 +29,34 @@ export default function AdditionalDetails() {
   const [freight, setFreight] = React.useState("");
   const [error, setError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [downloadBusy, setDownloadBusy] = React.useState(false);
   const [result, setResult] = React.useState(null);
+  const autoDownloadedRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!upload?.upload_id) navigate("/additional/upload", { replace: true });
   }, [upload, navigate]);
+
+  async function downloadReport(reportName) {
+    if (!reportName) return;
+    setError("");
+    setDownloadBusy(true);
+    try {
+      const blob = await api.downloadReportBlob(reportName);
+      triggerDownload(blob, reportName);
+    } catch (e2) {
+      setError(e2?.message || "Download failed");
+    } finally {
+      setDownloadBusy(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!result?.report_name) return;
+    if (autoDownloadedRef.current) return;
+    autoDownloadedRef.current = true;
+    void downloadReport(result.report_name);
+  }, [result?.report_name]);
 
   async function onGenerate(e) {
     e.preventDefault();
@@ -60,8 +84,7 @@ export default function AdditionalDetails() {
 
   async function onDownload() {
     if (!result?.report_name) return;
-    const blob = await api.downloadReportBlob(result.report_name);
-    triggerDownload(blob, result.report_name);
+    void downloadReport(result.report_name);
   }
 
   return (
@@ -90,14 +113,18 @@ export default function AdditionalDetails() {
               <Typography variant="body2" gutterBottom>
                 Report: <Chip label={result.report_name} size="small" />
               </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Download will start automatically. If it doesn&apos;t, click Download.
+              </Typography>
 
               <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
                 <Button
                   variant="contained"
-                  startIcon={<Download />}
+                  startIcon={downloadBusy ? <CircularProgress size={18} color="inherit" /> : <Download />}
                   onClick={onDownload}
+                  disabled={downloadBusy}
                 >
-                  Download
+                  {downloadBusy ? "Downloading..." : "Download"}
                 </Button>
                 <Button
                   variant="outlined"
