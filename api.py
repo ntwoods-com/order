@@ -306,6 +306,38 @@ def _safe_report_name(prefix: str, *, suffix: str) -> str:
     return f"{safe_prefix}_{timestamp}_{suffix}.xlsx"
 
 
+def _looks_like_legacy_tmp_report_name(value: str) -> bool:
+    if not value:
+        return False
+    return bool(re.fullmatch(r"tmp[a-z0-9]{4,}\.xlsx", value.strip(), flags=re.IGNORECASE))
+
+
+def _derive_report_name_for_legacy_row(dealer_name: str, generated_at: str, order_type: str) -> Optional[str]:
+    try:
+        dt = datetime.strptime((generated_at or "").strip(), "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+    safe_prefix = re.sub(r"[^a-zA-Z0-9_.-]+", "_", dealer_name or "REPORT").strip("_") or "REPORT"
+    timestamp = dt.strftime("%Y%m%d_%H%M%S")
+    suffix = "ADDITIONAL_ORDER" if (order_type or "").strip().lower() == "additional" else "SALE_ORDER"
+    return f"{safe_prefix}_{timestamp}_{suffix}.xlsx"
+
+
+def _fix_legacy_report_name(order: dict) -> None:
+    current = (order.get("report_name") or "").strip()
+    if not _looks_like_legacy_tmp_report_name(current):
+        return
+
+    derived = _derive_report_name_for_legacy_row(
+        order.get("dealer_name") or "",
+        order.get("generated_at") or "",
+        order.get("order_type") or "",
+    )
+    if derived:
+        order["report_name"] = derived
+
+
 # ==================== Admin API (React) ====================
 @api_bp.route("/admin/overview", methods=["GET"])
 @admin_required_api
@@ -433,11 +465,17 @@ def admin_orders(current_user):
         rows = conn.execute(query, tuple(page_params)).fetchall()
         conn.close()
 
+        orders_list = []
+        for r in rows:
+            item = dict(r)
+            _fix_legacy_report_name(item)
+            orders_list.append(item)
+
         return jsonify(
             {
                 "success": True,
                 "data": {
-                    "orders": [dict(r) for r in rows],
+                    "orders": orders_list,
                     "pagination": {
                         "page": page,
                         "per_page": per_page,
@@ -609,6 +647,7 @@ def generate_report(current_user):
 
     temp_upload_path = None
     temp_output_path = None
+    temp_output_dir = None
     
     try:
         # Write uploaded file to temporary location for processing
@@ -626,9 +665,8 @@ def generate_report(current_user):
         suffix = "ADDITIONAL_ORDER" if is_additional_order else "SALE_ORDER"
         report_name = _safe_report_name(dealer_name, suffix=suffix)
         
-        # Generate report to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            temp_output_path = tmp.name
+        temp_output_dir = tempfile.mkdtemp(prefix="report_")
+        temp_output_path = os.path.join(temp_output_dir, report_name)
 
         write_report(
             df,
@@ -664,6 +702,11 @@ def generate_report(current_user):
             os.remove(temp_upload_path)
         if temp_output_path and os.path.exists(temp_output_path):
             os.remove(temp_output_path)
+        if temp_output_dir and os.path.exists(temp_output_dir):
+            try:
+                os.rmdir(temp_output_dir)
+            except Exception:
+                pass
 
         return jsonify(
             {
@@ -687,6 +730,11 @@ def generate_report(current_user):
                 os.remove(temp_output_path)
             except:
                 pass
+        if temp_output_dir and os.path.exists(temp_output_dir):
+            try:
+                os.rmdir(temp_output_dir)
+            except Exception:
+                pass
         return jsonify({"success": False, "error": f"Storage access denied: {str(e)}"}), 403
     except Exception as e:
         # Clean up on error
@@ -700,6 +748,11 @@ def generate_report(current_user):
             try:
                 os.remove(temp_output_path)
             except:
+                pass
+        if temp_output_dir and os.path.exists(temp_output_dir):
+            try:
+                os.rmdir(temp_output_dir)
+            except Exception:
                 pass
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -1055,7 +1108,7 @@ def get_orders(current_user):
         
         # Get paginated results
         query = f"""
-            SELECT id, username, dealer_name, city, order_id, report_name, generated_at 
+            SELECT id, username, dealer_name, city, order_id, report_name, generated_at, order_type
             FROM sale_orders 
             WHERE {where_clause}
             ORDER BY generated_at DESC
@@ -1065,11 +1118,17 @@ def get_orders(current_user):
         orders = conn.execute(query, tuple(params)).fetchall()
         
         conn.close()
+
+        orders_list = []
+        for o in orders:
+            item = dict(o)
+            _fix_legacy_report_name(item)
+            orders_list.append(item)
         
         return jsonify({
             'success': True,
             'data': {
-                'orders': [dict(o) for o in orders],
+                'orders': orders_list,
                 'pagination': {
                     'page': page,
                     'per_page': per_page,
