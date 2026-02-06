@@ -104,6 +104,11 @@ def create_app() -> Flask:
         DATABASE_FILE=os.getenv("DATABASE_FILE", os.path.join(BASE_DIR, "order_counter.db")),
     )
 
+    # Safe startup log for storage config (bucket + key role, no secrets).
+    from storage_utils import log_storage_startup
+
+    log_storage_startup()
+
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app_env = (os.getenv("APP_ENV") or "development").strip().lower()
     default_secure_cookie = app_env in {"production", "prod"}

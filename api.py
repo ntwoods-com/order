@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Set
 from io import BytesIO
 import jwt
+import mimetypes
 import os
 import re
 import uuid
@@ -17,7 +18,7 @@ from werkzeug.utils import secure_filename
 
 from db_utils import connect as db_connect
 from generate_sale_order import prepare_data, write_report, generate_unique_order_id
-from storage_utils import upload_file, download_file, delete_file, file_exists
+from storage_utils import upload_file, download_file, delete_file
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_FILE = os.getenv('DATABASE_FILE', os.path.join(BASE_DIR, 'order_counter.db'))
@@ -563,6 +564,8 @@ def create_upload(current_user):
                 },
             }
         )
+    except PermissionError as e:
+        return jsonify({"success": False, "error": f"Upload access denied: {str(e)}"}), 403
     except Exception as e:
         return jsonify({"success": False, "error": f"Upload failed: {str(e)}"}), 500
 
@@ -587,8 +590,6 @@ def generate_report(current_user):
         return jsonify({"success": False, "error": "dealer_name and city are required"}), 400
 
     upload_storage_path = f"uploads/{upload_id}"
-    if not file_exists(upload_storage_path):
-        return jsonify({"success": False, "error": "Upload not found"}), 404
 
     order_date = ""
     if order_date_raw:
@@ -597,14 +598,22 @@ def generate_report(current_user):
         except ValueError:
             return jsonify({"success": False, "error": "Invalid order_date (expected YYYY-MM-DD)"}), 400
 
+    try:
+        upload_file_data, _ = download_file(upload_storage_path)
+    except FileNotFoundError:
+        return jsonify({"success": False, "error": "Upload not found"}), 404
+    except PermissionError as e:
+        return jsonify({"success": False, "error": f"Upload access denied: {str(e)}"}), 403
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Failed to read upload: {str(e)}"}), 500
+
     temp_upload_path = None
     temp_output_path = None
     
     try:
-        # Download uploaded file to temporary location for processing
-        file_data, _ = download_file(upload_storage_path)
+        # Write uploaded file to temporary location for processing
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            tmp.write(file_data)
+            tmp.write(upload_file_data)
             temp_upload_path = tmp.name
         
         df, _, weight_map, hdmr_map, mdf_map, ply_map, pvc_map, wpc_map = prepare_data(temp_upload_path)
@@ -665,6 +674,20 @@ def generate_report(current_user):
                 },
             }
         )
+    except PermissionError as e:
+        # Clean up on error
+        delete_file(upload_storage_path)
+        if temp_upload_path and os.path.exists(temp_upload_path):
+            try:
+                os.remove(temp_upload_path)
+            except:
+                pass
+        if temp_output_path and os.path.exists(temp_output_path):
+            try:
+                os.remove(temp_output_path)
+            except:
+                pass
+        return jsonify({"success": False, "error": f"Storage access denied: {str(e)}"}), 403
     except Exception as e:
         # Clean up on error
         delete_file(upload_storage_path)
@@ -692,17 +715,20 @@ def download_generated_report(current_user, report_name):
         return jsonify({"success": False, "error": "Invalid report_name"}), 400
 
     report_storage_path = f"reports/{safe_name}"
-    if not file_exists(report_storage_path):
-        return jsonify({"success": False, "error": "Report not found"}), 404
 
     try:
         file_data, filename = download_file(report_storage_path)
+        mimetype, _ = mimetypes.guess_type(filename)
         return send_file(
             BytesIO(file_data),
             as_attachment=True,
             download_name=filename,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mimetype=mimetype or "application/octet-stream",
         )
+    except FileNotFoundError:
+        return jsonify({"success": False, "error": "Report not found"}), 404
+    except PermissionError as e:
+        return jsonify({"success": False, "error": f"Report access denied: {str(e)}"}), 403
     except Exception as e:
         return jsonify({"success": False, "error": f"Download failed: {str(e)}"}), 500
 
