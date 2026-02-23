@@ -1,7 +1,10 @@
-"""WSGI entrypoint for PythonAnywhere.
+"""WSGI entrypoint for Render / PythonAnywhere.
 
-In PythonAnywhere Web tab -> WSGI configuration file, you can point to this module
-or import `application` from it.
+Exports both `app` and `application` so either gunicorn wsgi:app
+or gunicorn wsgi:application works.
 """
 
-from app import app as application
+from app import app  # noqa: F401
+
+# PythonAnywhere convention
+application = app
