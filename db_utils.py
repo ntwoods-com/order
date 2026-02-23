@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from functools import lru_cache
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
@@ -51,7 +52,7 @@ def get_engine(database_url: str):
         # psycopg2 expects sslmode in connect_args.
         connect_args["sslmode"] = sslmode
         # Add connection timeout to fail fast if network is bad
-        connect_args["connect_timeout"] = 10
+        connect_args["connect_timeout"] = 30
     else:
         # SQLite is often used locally; allow connections to be used across threads
         # (gunicorn gthread workers, etc.).
@@ -128,7 +129,25 @@ def init_schema(*, default_sqlite_db_file: str) -> None:
     url = get_database_url(default_sqlite_db_file=default_sqlite_db_file)
     postgres = is_postgres_url(url)
 
-    conn = connect(default_sqlite_db_file=default_sqlite_db_file)
+    # Retry logic for database connection (Supabase free tier can be slow to respond)
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            conn = connect(default_sqlite_db_file=default_sqlite_db_file)
+            break
+        except Exception as e:
+            if attempt < max_retries:
+                wait = attempt * 5  # 5s, 10s
+                logger.warning(
+                    "DB connection attempt %d/%d failed: %s — retrying in %ds",
+                    attempt, max_retries, e, wait,
+                )
+                time.sleep(wait)
+            else:
+                logger.error(
+                    "DB connection failed after %d attempts: %s", max_retries, e
+                )
+                raise
     try:
         if postgres:
             # Postgres: use BIGSERIAL for autoincrement ids.
