@@ -27,7 +27,7 @@ def _configure_logging() -> None:
     logger.setLevel(logging.INFO)
 
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    
+
     # Avoid duplicate handlers under WSGI reloads.
     logger.handlers = []
 
@@ -42,10 +42,10 @@ def _configure_logging() -> None:
         log_dir = os.path.dirname(log_file)
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
-        
+
         max_bytes = int(os.getenv("LOG_MAX_BYTES", "5000000"))
         backup_count = int(os.getenv("LOG_BACKUP_COUNT", "3"))
-        
+
         file_handler = RotatingFileHandler(
             log_file,
             maxBytes=max_bytes,
@@ -123,15 +123,20 @@ def create_app() -> Flask:
     # Only create local directories (skip for cloud storage URLs like Supabase S3)
     upload_folder = app.config["UPLOAD_FOLDER"]
     report_folder = app.config["REPORT_FOLDER"]
-    
+
     if not upload_folder.startswith(("http://", "https://")):
         os.makedirs(upload_folder, exist_ok=True)
     if not report_folder.startswith(("http://", "https://")):
         os.makedirs(report_folder, exist_ok=True)
 
-
-    # Ensure DB schema exists.
-    init_schema(default_sqlite_db_file=app.config["DATABASE_FILE"])
+    # Ensure DB schema exists — non-fatal so the app can still start
+    # even if the database is temporarily unreachable (e.g. Supabase paused).
+    try:
+        init_schema(default_sqlite_db_file=app.config["DATABASE_FILE"])
+    except Exception as e:
+        logging.getLogger(__name__).error(
+            "init_schema failed (app will start, but DB may be unavailable): %s", e
+        )
 
     # Register API routes only (frontend is deployed separately on GitHub Pages).
     from api import api_bp
